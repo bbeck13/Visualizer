@@ -1,0 +1,22 @@
+#IncludeRegexLine: ^[ 	]*#[ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/badmin/Documents/School/471/FP/vis/src/wave_iteration.cpp
+aquila/global.h
+/home/badmin/Documents/School/471/FP/vis/src/aquila/global.h
+aquila/source/WaveFile.h
+/home/badmin/Documents/School/471/FP/vis/src/aquila/source/WaveFile.h
+algorithm
+-
+cstdlib
+-
+iostream
+-
+thread
+-
+

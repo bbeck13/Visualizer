@@ -1,0 +1,1 @@
+/bin/c++    -std=gnu++0x   CMakeFiles/visualizer.dir/src/wave_iteration.cpp.o  -o visualizer -rdynamic -lAquila -pthread 
