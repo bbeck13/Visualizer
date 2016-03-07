@@ -96,7 +96,7 @@ static void render(Aquila::WaveFile wav) {
    int width, height;
    double diffTime;
    static int sampleNum = 0;
-   std::pair<double,double> from(0, DBL_MAX), to(1, 3);
+   std::pair<double,double> from(0, maxValue), to(.5, 2);
    double scale = mapRange(from, to, wav.sample(0));
 
    milliseconds ms = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
@@ -227,39 +227,41 @@ int main(int argc, char *argv[]) {
    {
       //if (i < 300)
       //   std::cout << "Maximum sample value: " << wav.sample(i) << std::endl;
-      if (wav.sample(i) > maxValue)
-         maxValue = wav.sample(i);
+      std::vector<Aquila::SampleType> v = {wav.sample(i)};
+      Aquila::SignalSource src(v, wav.getSampleFrequency());
+      if (Aquila::power(src) > maxValue)
+         maxValue = Aquila::power(src);
    }
    std::cout << "Maximum sample value: " << maxValue << std::endl;
 
    // iterator usage
-   for (auto it = wav.begin(); it != wav.end(); ++it)
-   {
-      if (*it < minValue)
-         minValue = *it;
-   }
-   std::cout << "Minimum sample value: " << minValue << std::endl;
+   //for (auto it = wav.begin(); it != wav.end(); ++it)
+   //{
+   //   if (*it < minValue)
+   //      minValue = *it;
+   //}
+   //std::cout << "Minimum sample value: " << minValue << std::endl;
 
-   // range-based for loop
-   for (auto sample : wav)
-   {
-      average += sample;
-   }
-   average /= wav.getSamplesCount();
-   std::cout << "Average: " << average << std::endl;
+   //// range-based for loop
+   //for (auto sample : wav)
+   //{
+   //   average += sample;
+   //}
+   //average /= wav.getSamplesCount();
+   //std::cout << "Average: " << average << std::endl;
 
-   // STL algorithms work too, so the previous examples could be rewritten
-   // using max/min_element.
-   int limit = 5000;
-   int aboveLimit = std::count_if(
-         wav.begin(),
-         wav.end(),
-         [limit] (Aquila::SampleType sample) {
-         return sample > limit;
-         }
-         );
-   std::cout << "There are " << aboveLimit << " samples greater than "
-      << limit << std::endl;
+   //// STL algorithms work too, so the previous examples could be rewritten
+   //// using max/min_element.
+   //int limit = 5000;
+   //int aboveLimit = std::count_if(
+   //      wav.begin(),
+   //      wav.end(),
+   //      [limit] (Aquila::SampleType sample) {
+   //      return sample > limit;
+   //      }
+   //      );
+   //std::cout << "There are " << aboveLimit << " samples greater than "
+   //   << limit << std::endl;
 
    init();
    std::thread sound (PlayMusic, wav);
