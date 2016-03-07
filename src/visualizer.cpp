@@ -1,10 +1,12 @@
 #include "aquila/global.h"
 #include "aquila/source/WaveFile.h"
 #include <algorithm>
+#include <utility>
 #include <cstdlib>
 #include <iostream>
 #include <thread>
 #include <time.h>
+#include <chrono>
 #define GLEW_STATIC
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
@@ -16,10 +18,20 @@
 
 using namespace std;
 using namespace Eigen;
+using namespace std::chrono;
 
 GLFWwindow *window; // Main application window
 string RESOURCE_DIR = ""; // Where the resources are loaded from
+shared_ptr<Program> prog;
+shared_ptr<Shape> shape;
+
+milliseconds lastTime;
+
+double interval;
+
 int g_width, g_height;
+
+Aquila::SampleType maxValue = 0, minValue = 0, average = 0, aboveLimit = 0;
 
 static void error_callback(int error, const char *description) {
    cerr << description << endl;
@@ -38,6 +50,94 @@ static void resize_callback(GLFWwindow *window, int width, int height) {
    glViewport(0, 0, width, height);
 }
 
+static void init() {
+   GLSL::checkVersion();
+
+   // Set background color.
+   glClearColor(0.5f, 0.5f, 1.0f, 1.0f);
+   // Enable z-buffer test.
+   glEnable(GL_DEPTH_TEST);
+
+   // Initialize mesh.
+   shape = make_shared<Shape>();
+   shape->loadMesh(RESOURCE_DIR + "sphere.obj");
+   shape->resize();
+   shape->init();
+
+   prog = make_shared<Program>();
+   prog->setVerbose(true);
+   prog->setShaderNames(RESOURCE_DIR + "simple_vert.glsl", RESOURCE_DIR + "simple_frag.glsl");
+   prog->init();
+   prog->addUniform("P");
+   prog->addUniform("MV");
+   prog->addAttribute("vertPos");
+   prog->addAttribute("vertNor");
+   lastTime = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
+
+}
+
+
+template<typename tVal>
+tVal mapRange(std::pair<tVal,tVal> a, std::pair<tVal, tVal> b, tVal inVal) {
+   tVal inValNorm = inVal - a.first;
+   tVal aUpperNorm = a.second - a.first;
+   tVal normPosition = inValNorm / aUpperNorm;
+
+   tVal bUpperNorm = b.second - b.first;
+   tVal bValNorm = normPosition * bUpperNorm;
+   tVal outVal = b.first + bValNorm;
+
+   return outVal;
+}
+
+static void render(Aquila::WaveFile wav) {
+   int width, height;
+   double diffTime;
+   static int sampleNum = 0;
+   std::pair<double,double> from(-30, 30), to(0, 3);
+   double scale = mapRange(from, to, wav.sample(0));
+
+   milliseconds ms = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
+
+   //std::cout << "ms " << ms.count() - lastTime.count() << " interval "  << interval << std::endl;
+   diffTime = ms.count() - lastTime.count();
+   if (diffTime >= interval) {
+      lastTime = ms;
+      sampleNum++;
+      scale = mapRange(from, to, wav.sample(sampleNum));
+
+      std::cout << "sampleNum " << sampleNum << " value " << wav.sample(sampleNum) << std::endl;
+      //std::cout << "max " << maxValue << " min " << minValue << " cur " << wav.sample(sampleNum) << std::endl;
+   }
+   //std::cout << "scale " << scale << std::endl;
+
+   glfwGetFramebufferSize(window, &width, &height);
+   glViewport(0, 0, width, height);
+
+   //Clear framebuffer.
+   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+   //Use the local matrices for lab 5
+   float aspect = width/(float)height;
+   auto P = make_shared<MatrixStack>();
+   auto MV = make_shared<MatrixStack>();
+   //Apply perspective projection.
+   P->pushMatrix();
+   P->perspective(45.0f, aspect, 0.01f, 100.0f);
+
+   //Draw mesh using GLSL.
+   MV->pushMatrix();
+   MV->loadIdentity();
+   MV->translate(Vector3f(0, 0, -10));
+   MV->translate(Vector3f(0, scale, 0));
+   //MV->scale(Vector3f(scale, scale, scale));
+   prog->bind();
+   glUniformMatrix4fv(prog->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
+   glUniformMatrix4fv(prog->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
+   shape->draw(prog);
+   prog->unbind();
+}
+
 void PlayMusic(Aquila::WaveFile wav) {
    if(system(NULL)) {
       std::ostringstream stringStream;
@@ -53,9 +153,8 @@ void PlayMusic(Aquila::WaveFile wav) {
 int main(int argc, char *argv[]) {
    g_width = 640;
    g_height = 480;
-   if (argc < 3)
-   {
-      std::cout << "Usage: wave_iteration <FILENAME> <RESOURCEDIR>" << std::endl;
+   if (argc < 3) {
+      std::cout << "Usage: visualizer <FILENAME> <RESOURCEDIR>" << std::endl;
       return 1;
    }
    RESOURCE_DIR = argv[2] + string("/");
@@ -107,16 +206,19 @@ int main(int argc, char *argv[]) {
    Aquila::WaveFile wav(argv[1]);
    std::cout << "Loaded file: " << wav.getFilename()
       << " (" << wav.getBitsPerSample() << "b)" << std::endl;
-   Aquila::SampleType maxValue = 0, minValue = 0, average = 0;
+   //Aquila::SampleType maxValue = 0, minValue = 0, average = 0;
    std::thread sound (PlayMusic, wav);
 
    // simple index-based iteration
    double length = wav.getAudioLength();
-   printf("Ms per sample %lf\n samples %d\n ms %d\n", length / wav.getSamplesCount(),
-         wav.getSamplesCount(), length);
+   interval = wav.getSamplesCount() / length;
+   //printf("Ms per sample %lf\n samples %u\n ms %lf\n", wav.getSamplesCount() / length,
+   //      wav.getSamplesCount(), length);
 
    for (std::size_t i = 0; i < wav.getSamplesCount(); ++i)
    {
+      //if (i < 300)
+      //   std::cout << "Maximum sample value: " << wav.sample(i) << std::endl;
       if (wav.sample(i) > maxValue)
          maxValue = wav.sample(i);
    }
@@ -128,7 +230,7 @@ int main(int argc, char *argv[]) {
       if (*it < minValue)
          minValue = *it;
    }
-   std::cout << "Minimum samplel value: " << minValue << std::endl;
+   std::cout << "Minimum sample value: " << minValue << std::endl;
 
    // range-based for loop
    for (auto sample : wav)
@@ -151,8 +253,10 @@ int main(int argc, char *argv[]) {
    std::cout << "There are " << aboveLimit << " samples greater than "
       << limit << std::endl;
 
+   init();
    // Loop until the user closes the window.
    while(!glfwWindowShouldClose(window)) {
+      render(wav);
       // Swap front and back buffers.
       glfwSwapBuffers(window);
       // Poll for and process events.
@@ -161,7 +265,6 @@ int main(int argc, char *argv[]) {
    // Quit program.
    glfwDestroyWindow(window);
    glfwTerminate();
-
    sound.join();
    std::cout << "Song done" << std::endl;
    return 0;
