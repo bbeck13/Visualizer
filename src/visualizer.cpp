@@ -7,6 +7,8 @@
 #include <thread>
 #include <time.h>
 #include <chrono>
+#include <limits>
+#include <float.h>
 #define GLEW_STATIC
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
@@ -94,22 +96,24 @@ static void render(Aquila::WaveFile wav) {
    int width, height;
    double diffTime;
    static int sampleNum = 0;
-   std::pair<double,double> from(-30, 30), to(0, 3);
+   std::pair<double,double> from(0, DBL_MAX), to(1, 3);
    double scale = mapRange(from, to, wav.sample(0));
 
    milliseconds ms = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
-
-   //std::cout << "ms " << ms.count() - lastTime.count() << " interval "  << interval << std::endl;
    diffTime = ms.count() - lastTime.count();
-   if (diffTime >= interval) {
-      lastTime = ms;
-      sampleNum++;
-      scale = mapRange(from, to, wav.sample(sampleNum));
+   sampleNum = diffTime*interval;
+   //std::cout << "ms " << ms.count() - lastTime.count() << " interval "  << interval << std::endl;
+   //scale = mapRange(from, to, wav.sample(sampleNum));
+   std::vector<Aquila::SampleType> v = {wav.sample(sampleNum)};
+   Aquila::SignalSource src(v, wav.getSampleFrequency());
+   //std::cout << "power? " << Aquila::power(src) << std::endl;
+   scale = mapRange(from, to, Aquila::power(src));
+   //std::cout << "scale? " << scale << std::endl;
 
-      std::cout << "sampleNum " << sampleNum << " value " << wav.sample(sampleNum) << std::endl;
-      //std::cout << "max " << maxValue << " min " << minValue << " cur " << wav.sample(sampleNum) << std::endl;
-   }
-   //std::cout << "scale " << scale << std::endl;
+   //Cukk
+   //std::cout << "sampleNum " << sampleNum << " value " << (wav.sample(sampleNum)).getSampleFrequency() << std::endl;
+   //std::cout << "max " << maxValue << " min " << minValue << " cur " << wav.sample(sampleNum) << std::endl;
+   std::cout << "scale " << scale << std::endl;
 
    glfwGetFramebufferSize(window, &width, &height);
    glViewport(0, 0, width, height);
@@ -129,13 +133,19 @@ static void render(Aquila::WaveFile wav) {
    MV->pushMatrix();
    MV->loadIdentity();
    MV->translate(Vector3f(0, 0, -10));
-   MV->translate(Vector3f(0, scale, 0));
-   //MV->scale(Vector3f(scale, scale, scale));
+   //MV->translate(Vector3f(0, scale, 0));
+   MV->scale(Vector3f(scale, scale, scale));
    prog->bind();
    glUniformMatrix4fv(prog->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
    glUniformMatrix4fv(prog->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
    shape->draw(prog);
    prog->unbind();
+
+   //std::cout << "sample num " << sampleNum << " Num samples " << wav.getSamplesCount() << std::endl;
+
+   if (sampleNum >= wav.getSamplesCount()) {
+      glfwSetWindowShouldClose(window, GL_TRUE);
+   }
 }
 
 void PlayMusic(Aquila::WaveFile wav) {
@@ -143,7 +153,7 @@ void PlayMusic(Aquila::WaveFile wav) {
       std::ostringstream stringStream;
       stringStream << "canberra-gtk-play -f " << wav.getFilename();
       const std::string tmp =  stringStream.str();
-      std::cerr << "Attempting: " << tmp.c_str();
+      //std::cerr << "Attempting: " << tmp.c_str();
       system(tmp.c_str());
    } else {
       std::cout << "Cannot Play audio won't continue" << std::endl;
@@ -207,13 +217,11 @@ int main(int argc, char *argv[]) {
    std::cout << "Loaded file: " << wav.getFilename()
       << " (" << wav.getBitsPerSample() << "b)" << std::endl;
    //Aquila::SampleType maxValue = 0, minValue = 0, average = 0;
-   std::thread sound (PlayMusic, wav);
 
    // simple index-based iteration
    double length = wav.getAudioLength();
    interval = wav.getSamplesCount() / length;
-   //printf("Ms per sample %lf\n samples %u\n ms %lf\n", wav.getSamplesCount() / length,
-   //      wav.getSamplesCount(), length);
+   printf("Ms per sample %lf\n samples %u\n ms %lf\n", interval, wav.getSamplesCount(), length);
 
    for (std::size_t i = 0; i < wav.getSamplesCount(); ++i)
    {
@@ -254,6 +262,7 @@ int main(int argc, char *argv[]) {
       << limit << std::endl;
 
    init();
+   std::thread sound (PlayMusic, wav);
    // Loop until the user closes the window.
    while(!glfwWindowShouldClose(window)) {
       render(wav);
