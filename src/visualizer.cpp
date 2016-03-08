@@ -56,7 +56,7 @@ static void init() {
    GLSL::checkVersion();
 
    // Set background color.
-   glClearColor(0.5f, 0.5f, 1.0f, 1.0f);
+   glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
    // Enable z-buffer test.
    glEnable(GL_DEPTH_TEST);
 
@@ -94,10 +94,10 @@ tVal mapRange(std::pair<tVal,tVal> a, std::pair<tVal, tVal> b, tVal inVal) {
 
 static void render(Aquila::WaveFile wav) {
    int width, height;
-   double diffTime;
+   double diffTime, diff, scale_temp;
    static int sampleNum = 0;
-   std::pair<double,double> from(0, maxValue), to(.5, 2);
-   double scale = mapRange(from, to, wav.sample(0));
+   std::pair<double,double> from(0, maxValue), to(.5, 3);
+   static double scale = mapRange(from, to, wav.sample(0));
 
    milliseconds ms = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
    diffTime = ms.count() - lastTime.count();
@@ -107,7 +107,15 @@ static void render(Aquila::WaveFile wav) {
    std::vector<Aquila::SampleType> v = {wav.sample(sampleNum)};
    Aquila::SignalSource src(v, wav.getSampleFrequency());
    //std::cout << "power? " << Aquila::power(src) << std::endl;
-   scale = mapRange(from, to, Aquila::power(src));
+   scale_temp = mapRange(from, to, Aquila::power(src));
+   diff = scale_temp - scale;
+
+   if (diff > 1 || diff < -1.3) {
+      scale = scale_temp * .5;
+   } else {
+      scale = scale_temp;
+   }
+
    //std::cout << "scale? " << scale << std::endl;
 
    //Cukk
