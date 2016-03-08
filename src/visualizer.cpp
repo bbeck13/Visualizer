@@ -28,9 +28,7 @@ shared_ptr<Program> prog;
 shared_ptr<Shape> shape;
 
 milliseconds lastTime;
-
 double interval;
-
 int g_width, g_height;
 
 Aquila::SampleType maxValue = 0, minValue = 0, average = 0, aboveLimit = 0;
@@ -62,7 +60,7 @@ static void init() {
 
    // Initialize mesh.
    shape = make_shared<Shape>();
-   shape->loadMesh(RESOURCE_DIR + "sphere.obj");
+   shape->loadMesh(RESOURCE_DIR + "round.obj");
    shape->resize();
    shape->init();
 
@@ -74,6 +72,7 @@ static void init() {
    prog->addUniform("MV");
    prog->addAttribute("vertPos");
    prog->addAttribute("vertNor");
+   prog->addAttribute("vertTex");
    lastTime = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
 
 }
@@ -96,7 +95,7 @@ static void render(Aquila::WaveFile wav) {
    int width, height;
    double diffTime, diff, scale_temp;
    static int sampleNum = 0;
-   std::pair<double,double> from(0, maxValue), to(.5, 3);
+   std::pair<double,double> from(0, maxValue), to(0, 3.5);
    static double scale = mapRange(from, to, wav.sample(0));
 
    milliseconds ms = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
@@ -107,14 +106,14 @@ static void render(Aquila::WaveFile wav) {
    std::vector<Aquila::SampleType> v = {wav.sample(sampleNum)};
    Aquila::SignalSource src(v, wav.getSampleFrequency());
    //std::cout << "power? " << Aquila::power(src) << std::endl;
-   scale_temp = mapRange(from, to, Aquila::power(src));
+   scale = mapRange(from, to, Aquila::power(src));
    diff = scale_temp - scale;
 
-   if (diff > 1 || diff < -1.3) {
-      scale = scale_temp * .5;
-   } else {
-      scale = scale_temp;
-   }
+   //if (diff > .3 || diff < -.3) {
+   //   scale = scale_temp - (scale_temp *.2);
+   //} else {
+   //   scale = scale_temp;
+   //}
 
    //std::cout << "scale? " << scale << std::endl;
 
@@ -149,6 +148,53 @@ static void render(Aquila::WaveFile wav) {
    shape->draw(prog);
    prog->unbind();
 
+   scale = mapRange(from, to, Aquila::energy(src));
+   MV->pushMatrix();
+   MV->loadIdentity();
+   MV->translate(Vector3f(2, 2, -10));
+   //MV->translate(Vector3f(0, scale, 0));
+   MV->scale(Vector3f(scale, scale, scale));
+   prog->bind();
+   glUniformMatrix4fv(prog->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
+   glUniformMatrix4fv(prog->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
+   shape->draw(prog);
+   prog->unbind();
+
+   scale = mapRange(from, to, Aquila::power(src));
+   MV->pushMatrix();
+   MV->loadIdentity();
+   MV->translate(Vector3f(-2, -2, -10));
+   //MV->translate(Vector3f(0, scale, 0));
+   MV->scale(Vector3f(scale, scale, scale));
+   prog->bind();
+   glUniformMatrix4fv(prog->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
+   glUniformMatrix4fv(prog->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
+   shape->draw(prog);
+   prog->unbind();
+
+   scale = mapRange(from, to, Aquila::energy(src));
+   MV->pushMatrix();
+   MV->loadIdentity();
+   MV->translate(Vector3f(2, -2, -10));
+   //MV->translate(Vector3f(0, scale, 0));
+   MV->scale(Vector3f(scale, scale, scale));
+   prog->bind();
+   glUniformMatrix4fv(prog->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
+   glUniformMatrix4fv(prog->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
+   shape->draw(prog);
+   prog->unbind();
+
+   scale = mapRange(from, to, Aquila::power(src));
+   MV->pushMatrix();
+   MV->loadIdentity();
+   MV->translate(Vector3f(-2, 2, -10));
+   //MV->translate(Vector3f(0, scale, 0));
+   MV->scale(Vector3f(scale, scale, scale));
+   prog->bind();
+   glUniformMatrix4fv(prog->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
+   glUniformMatrix4fv(prog->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
+   shape->draw(prog);
+   prog->unbind();
    //std::cout << "sample num " << sampleNum << " Num samples " << wav.getSamplesCount() << std::endl;
 
    if (sampleNum >= wav.getSamplesCount()) {
