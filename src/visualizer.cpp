@@ -120,7 +120,6 @@ static void render(Aquila::WaveFile wav) {
    //Cukk
    //std::cout << "sampleNum " << sampleNum << " value " << (wav.sample(sampleNum)).getSampleFrequency() << std::endl;
    //std::cout << "max " << maxValue << " min " << minValue << " cur " << wav.sample(sampleNum) << std::endl;
-   std::cout << "scale " << scale << std::endl;
 
    glfwGetFramebufferSize(window, &width, &height);
    glViewport(0, 0, width, height);
@@ -151,6 +150,7 @@ static void render(Aquila::WaveFile wav) {
    scale = mapRange(from, to, Aquila::energy(src));
    MV->pushMatrix();
    MV->loadIdentity();
+   MV->rotate(sampleNum, Vector3f(0, 0, 1));
    MV->translate(Vector3f(2, 2, -10));
    //MV->translate(Vector3f(0, scale, 0));
    MV->scale(Vector3f(scale, scale, scale));
@@ -161,8 +161,10 @@ static void render(Aquila::WaveFile wav) {
    prog->unbind();
 
    scale = mapRange(from, to, Aquila::power(src));
+   //std::cout << "scale " << scale << std::endl;
    MV->pushMatrix();
    MV->loadIdentity();
+   MV->rotate(sampleNum, Vector3f(0, 0, 1));
    MV->translate(Vector3f(-2, -2, -10));
    //MV->translate(Vector3f(0, scale, 0));
    MV->scale(Vector3f(scale, scale, scale));
@@ -175,6 +177,7 @@ static void render(Aquila::WaveFile wav) {
    scale = mapRange(from, to, Aquila::energy(src));
    MV->pushMatrix();
    MV->loadIdentity();
+   MV->rotate(sampleNum, Vector3f(0, 0, 1));
    MV->translate(Vector3f(2, -2, -10));
    //MV->translate(Vector3f(0, scale, 0));
    MV->scale(Vector3f(scale, scale, scale));
@@ -187,6 +190,7 @@ static void render(Aquila::WaveFile wav) {
    scale = mapRange(from, to, Aquila::power(src));
    MV->pushMatrix();
    MV->loadIdentity();
+   MV->rotate(sampleNum, Vector3f(0, 0, 1));
    MV->translate(Vector3f(-2, 2, -10));
    //MV->translate(Vector3f(0, scale, 0));
    MV->scale(Vector3f(scale, scale, scale));
