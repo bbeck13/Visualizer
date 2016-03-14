@@ -1,6 +1,7 @@
 #include "aquila/global.h"
 #include "aquila/source/WaveFile.h"
 #include <algorithm>
+#include <exception>
 #include <utility>
 #include <cstdlib>
 #include <iostream>
@@ -228,6 +229,26 @@ int main(int argc, char *argv[]) {
    RESOURCE_DIR = argv[2] + string("/");
    g_width = 640;
    g_height = 480;
+   Aquila::WaveFile wav(argv[1]);
+   std::cout << "Loaded file: " << wav.getFilename()
+      << " (" << wav.getBitsPerSample() << "b)" << std::endl;
+   //Aquila::SampleType maxValue = 0, minValue = 0, average = 0;
+
+   // simple index-based iteration
+   double length = wav.getAudioLength();
+   interval = wav.getSamplesCount() / length;
+   printf("Ms per sample %lf\n samples %u\n ms %lf\n", interval, wav.getSamplesCount(), length);
+
+   for (std::size_t i = 0; i < wav.getSamplesCount(); ++i)
+   {
+      //if (i < 300)
+      //   std::cout << "Maximum sample value: " << wav.sample(i) << std::endl;
+      std::vector<Aquila::SampleType> v = {wav.sample(i)};
+      Aquila::SignalSource src(v, wav.getSampleFrequency());
+      if (Aquila::power(src) > maxValue)
+         maxValue = Aquila::power(src);
+   }
+   std::cout << "Maximum sample value: " << maxValue << std::endl;
 
    /* your main will always include a similar set up to establish your window
       and GL context, etc. */
@@ -271,26 +292,6 @@ int main(int argc, char *argv[]) {
    //set the window resize call back
    glfwSetFramebufferSizeCallback(window, resize_callback);
 
-   Aquila::WaveFile wav(argv[1]);
-   std::cout << "Loaded file: " << wav.getFilename()
-      << " (" << wav.getBitsPerSample() << "b)" << std::endl;
-   //Aquila::SampleType maxValue = 0, minValue = 0, average = 0;
-
-   // simple index-based iteration
-   double length = wav.getAudioLength();
-   interval = wav.getSamplesCount() / length;
-   printf("Ms per sample %lf\n samples %u\n ms %lf\n", interval, wav.getSamplesCount(), length);
-
-   for (std::size_t i = 0; i < wav.getSamplesCount(); ++i)
-   {
-      //if (i < 300)
-      //   std::cout << "Maximum sample value: " << wav.sample(i) << std::endl;
-      std::vector<Aquila::SampleType> v = {wav.sample(i)};
-      Aquila::SignalSource src(v, wav.getSampleFrequency());
-      if (Aquila::power(src) > maxValue)
-         maxValue = Aquila::power(src);
-   }
-   std::cout << "Maximum sample value: " << maxValue << std::endl;
 
    // iterator usage
    //for (auto it = wav.begin(); it != wav.end(); ++it)
@@ -334,6 +335,7 @@ int main(int argc, char *argv[]) {
    // Quit program.
    glfwDestroyWindow(window);
    glfwTerminate();
+   std::cout << "^C to stop song" << std::endl;
    sound.join();
    std::cout << "Song done" << std::endl;
    return 0;
