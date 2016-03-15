@@ -30,7 +30,7 @@ public:
 	const Eigen::Vector3f &getPosition() const { return x; };
 	const Eigen::Vector3f &getVelocity() const { return v; };
 	const Eigen::Vector4f &getColor() const { return color; };
-	
+
 private:
 	float charge; // +1 or -1
 	float m; // mass

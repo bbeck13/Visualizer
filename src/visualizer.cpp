@@ -25,6 +25,12 @@ using namespace std;
 using namespace Eigen;
 using namespace std::chrono;
 
+float randfloat(float l, float h)
+{
+   float r = rand() / (float)RAND_MAX;
+   return (1.0f - r) * l + r * h;
+}
+
 GLFWwindow *window; // Main application window
 string RESOURCE_DIR = ""; // Where the resources are loaded from
 shared_ptr<Program> prog;
@@ -32,17 +38,17 @@ shared_ptr<Program> progP;
 shared_ptr<Program> progPh;
 shared_ptr<Shape> shape;
 float lightPos[3] = {-0.5f, 0.0f, 1.0f};
-float lightColor[3] = {1.0f, 1.0f, 1.0f};
+float lightColor[3] = {0.4f, 0.1f, 0.6f};
 Eigen::Vector3f eyePos(0,0,0);
 Eigen::Vector3f lookAtPos(0,0,-5);
 Eigen::Vector3f up(0, 1 ,0);
 
-milliseconds lastTime;
-double interval;
+milliseconds *lastTime;
+double *interval;
 int g_width, g_height;
 float camRot;
 
-Aquila::SampleType maxValue = 0, minValue = 0, average = 0, aboveLimit = 0;
+//Aquila::SampleType maxValue = 0, minValue = 0, average = 0, aboveLimit = 0;
 vector<shared_ptr<Particle>> particles;
 int numP = 300;
 static GLfloat points[900];
@@ -165,7 +171,6 @@ static void init() {
       particles.push_back(particle);
       particle->load();
    }
-   lastTime = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
 }
 
 //set up the particles - note at first they have no location - set
@@ -269,17 +274,17 @@ tVal mapRange(std::pair<tVal,tVal> a, std::pair<tVal, tVal> b, tVal inVal) {
    return outVal;
 }
 
-static void render(Aquila::WaveFile wav) {
-   int width, height;
-   double diffTime, diff, scale_temp;
-   static int sampleNum = 0;
-   std::pair<double,double> from(0, maxValue), to(0, 3.5);
-   static double scale = mapRange(from, to, wav.sample(0));
-
+static void render(Aquila::WaveFile wav, std::pair<double, double> from, std::pair<double, double> to, int timeIdx) {
+   double diffTime;// scale_temp;
+   int sampleNum = 0;
+   //std::pair<double,double> from(0, maxValue), to(1, 2.5);
+   double scale = mapRange(from, to, wav.sample(0));
+   static double x[4] = {randfloat(-3.0f, 3.0f), randfloat(-3.0f, 3.0f), randfloat(-3.0f, 3.0f),randfloat(-3.0f, 3.0f)},
+                 y[4] = {randfloat(-3.0f, 3.0f), randfloat(-3.0f, 3.0f), randfloat(-3.0f, 3.0f),randfloat(-3.0f, 3.0f)};
    milliseconds ms = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
-   diffTime = ms.count() - lastTime.count();
-   sampleNum = diffTime*interval;
-   //std::cout << "ms " << ms.count() - lastTime.count() << " interval "  << interval << std::endl;
+   diffTime = ms.count() - lastTime[timeIdx].count();
+   sampleNum = diffTime*interval[timeIdx];
+   //std::cout << "ms " << ms.count() - lastTime[timeIdx].count() << " interval "  << interval[timeIdx] << std::endl;
    //scale = mapRange(from, to, wav.sample(sampleNum));
    std::vector<Aquila::SampleType> v = {wav.sample(sampleNum)};
    Aquila::SignalSource src(v, wav.getSampleFrequency());
@@ -294,19 +299,14 @@ static void render(Aquila::WaveFile wav) {
    //}
 
    //std::cout << "scale? " << scale << std::endl;
+   //std::cout << " wave " << wav.getFilename() << std::endl;
 
    //Cukk
    //std::cout << "sampleNum " << sampleNum << " value " << (wav.sample(sampleNum)).getSampleFrequency() << std::endl;
    //std::cout << "max " << maxValue << " min " << minValue << " cur " << wav.sample(sampleNum) << std::endl;
 
-   glfwGetFramebufferSize(window, &width, &height);
-   glViewport(0, 0, width, height);
 
-   //Clear framebuffer.
-   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-   //Use the local matrices for lab 5
-   float aspect = width/(float)height;
+   float aspect = g_width/(float)g_height;
    auto P = make_shared<MatrixStack>();
    auto MV = make_shared<MatrixStack>();
    //Apply perspective projection.
@@ -314,55 +314,49 @@ static void render(Aquila::WaveFile wav) {
    P->perspective(45.0f, aspect, 0.01f, 100.0f);
 
    //Draw mesh using GLSL.
-   MV->pushMatrix();
-   MV->loadIdentity();
-   MV->translate(Vector3f(0, 0, -10));
-   //MV->translate(Vector3f(0, scale, 0));
-   MV->scale(Vector3f(scale, scale, scale));
-   prog->bind();
-   glUniformMatrix4fv(prog->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
-   glUniformMatrix4fv(prog->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
-   shape->draw(prog);
-   prog->unbind();
+   //MV->pushMatrix();
+   //MV->loadIdentity();
+   //MV->translate(Vector3f(-2, 2, -10));
+   //MV->scale(Vector3f(scale, scale, scale));
+   //prog->bind();
+   //glUniformMatrix4fv(prog->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
+   //glUniformMatrix4fv(prog->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
+   //shape->draw(prog);
+   //prog->unbind();
 
-   scale = mapRange(from, to, Aquila::energy(src));
-   MV->pushMatrix();
-   MV->loadIdentity();
-   MV->rotate(sampleNum, Vector3f(0, 0, 1));
-   MV->translate(Vector3f(2, 2, -10));
-   //MV->translate(Vector3f(0, scale, 0));
-   MV->scale(Vector3f(scale, scale, scale));
-   prog->bind();
-   glUniformMatrix4fv(prog->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
-   glUniformMatrix4fv(prog->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
-   shape->draw(prog);
-   prog->unbind();
+   //scale = mapRange(from, to, Aquila::energy(src));
+   //MV->pushMatrix();
+   //MV->loadIdentity();
+   //MV->translate(Vector3f(2, 2, -10));
+   //MV->scale(Vector3f(scale, scale, scale));
+   //prog->bind();
+   //glUniformMatrix4fv(prog->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
+   //glUniformMatrix4fv(prog->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
+   //shape->draw(prog);
+   //prog->unbind();
 
-   scale = mapRange(from, to, Aquila::power(src));
-   //std::cout << "scale " << scale << std::endl;
-   MV->pushMatrix();
-   MV->loadIdentity();
-   MV->rotate(sampleNum, Vector3f(0, 0, 1));
-   MV->translate(Vector3f(-2, -2, -10));
-   //MV->translate(Vector3f(0, scale, 0));
-   MV->scale(Vector3f(scale, scale, scale));
-   prog->bind();
-   glUniformMatrix4fv(prog->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
-   glUniformMatrix4fv(prog->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
-   shape->draw(prog);
-   prog->unbind();
+   //scale = mapRange(from, to, Aquila::power(src));
+   ////std::cout << "scale " << scale << std::endl;
+   //MV->pushMatrix();
+   //MV->loadIdentity();
+   //MV->translate(Vector3f(-2, -2, -10));
+   //MV->scale(Vector3f(scale, scale, scale));
+   //prog->bind();
+   //glUniformMatrix4fv(prog->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
+   //glUniformMatrix4fv(prog->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
+   //shape->draw(prog);
+   //prog->unbind();
 
-   scale = mapRange(from, to, Aquila::energy(src));
-   MV->pushMatrix();
-   MV->loadIdentity();
-   MV->rotate(sampleNum, Vector3f(0, 0, 1));
-   MV->translate(Vector3f(2, -2, -10));
-   MV->scale(Vector3f(scale, scale, scale));
-   prog->bind();
-   glUniformMatrix4fv(prog->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
-   glUniformMatrix4fv(prog->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
-   shape->draw(prog);
-   prog->unbind();
+   //scale = mapRange(from, to, Aquila::energy(src));
+   //MV->pushMatrix();
+   //MV->loadIdentity();
+   //MV->translate(Vector3f(2, -2, -10));
+   //MV->scale(Vector3f(scale, scale, scale));
+   //prog->bind();
+   //glUniformMatrix4fv(prog->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
+   //glUniformMatrix4fv(prog->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
+   //shape->draw(prog);
+   //prog->unbind();
 
    progPh->bind();
    scale = mapRange(from, to, Aquila::power(src));
@@ -375,7 +369,7 @@ static void render(Aquila::WaveFile wav) {
    P->perspective(45.0f, aspect, 0.01f, 100.0f);
    M->pushMatrix();
    M->loadIdentity();
-   M->translate(Vector3f(0, 0, -5));
+   M->translate(Vector3f(x[timeIdx], y[timeIdx ], -5));
    M->scale(Vector3f(scale, scale, scale));
    glUniformMatrix4fv(progPh->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
    glUniformMatrix4fv(progPh->getUniform("ViewMatrix"), 1, GL_FALSE, V->topMatrix().data());
@@ -394,45 +388,45 @@ static void render(Aquila::WaveFile wav) {
    P->popMatrix();
 
    //particles!
-   updateParticles();
-   updateGeom();
-   // Apply perspective projection.
-   P->pushMatrix();
-   P->perspective(45.0f, aspect, 0.01f, 100.0f);
-   MV->loadIdentity();
-   //camera rotate
-   MV->rotate(camRot, Vector3f(0, 1, 0));
+   //UpdateParticles();
+   //UpdateGeom();
+   //// Apply perspective projection.
+   //P->pushMatrix();
+   //P->perspective(45.0f, aspect, 0.01f, 100.0f);
+   //MV->loadIdentity();
+   ////camera rotate
+   //MV->rotate(camRot, Vector3f(0, 1, 0));
 
-   // Draw
-   progP->bind();
-   glUniformMatrix4fv(progP->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
+   //// Draw
+   //ProgP->bind();
+   //GlUniformMatrix4fv(progP->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
 
-   glUniformMatrix4fv(progP->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
+   //GlUniformMatrix4fv(progP->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
 
-   glEnableVertexAttribArray(0);
-   glBindBuffer(GL_ARRAY_BUFFER, pointsbuffer);
-   glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0,(void*)0);
+   //GlEnableVertexAttribArray(0);
+   //GlBindBuffer(GL_ARRAY_BUFFER, pointsbuffer);
+   //GlVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0,(void*)0);
 
-   glEnableVertexAttribArray(1);
-   glBindBuffer(GL_ARRAY_BUFFER, colorbuffer);
-   glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 0,(void*)0);
+   //GlEnableVertexAttribArray(1);
+   //GlBindBuffer(GL_ARRAY_BUFFER, colorbuffer);
+   //GlVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 0,(void*)0);
 
-   glVertexAttribDivisor(0, 1);
-   glVertexAttribDivisor(1, 1);
-   // Draw the points !
-   //std::cout << "sample num " << sampleNum << " Num samples " << wav.getSamplesCount() << std::endl;
-   glDrawArraysInstanced(GL_POINTS, 0, 1, numP);
-   //std::cout << "sample num " << sampleNum << " Num samples " << wav.getSamplesCount() << std::endl;
+   //GlVertexAttribDivisor(0, 1);
+   //GlVertexAttribDivisor(1, 1);
+   //// Draw the points !
+   ////std::cout << "sample num " << sampleNum << " Num samples " << wav.getSamplesCount() << std::endl;
+   //GlDrawArraysInstanced(GL_POINTS, 0, 1, numP);
+   ////std::cout << "sample num " << sampleNum << " Num samples " << wav.getSamplesCount() << std::endl;
 
-   glVertexAttribDivisor(0, 0);
-   glVertexAttribDivisor(1, 0);
-   glDisableVertexAttribArray(0);
-   glDisableVertexAttribArray(1);
-   progP->unbind();
-   // Pop matrix stacks.
-   P->popMatrix();
+   //GlVertexAttribDivisor(0, 0);
+   //GlVertexAttribDivisor(1, 0);
+   //GlDisableVertexAttribArray(0);
+   //GlDisableVertexAttribArray(1);
+   //ProgP->unbind();
+   //// Pop matrix stacks.
+   //P->popMatrix();
 
-   if (sampleNum >= wav.getSamplesCount()) {
+   if ((size_t)sampleNum >= wav.getSamplesCount()) {
       glfwSetWindowShouldClose(window, GL_TRUE);
    }
 }
@@ -453,35 +447,45 @@ int main(int argc, char *argv[]) {
    g_width = 640;
    g_height = 480;
    if (argc < 3) {
-      std::cout << "Usage: visualizer <FILENAME> <RESOURCEDIR>" << std::endl;
+      std::cout << "Usage: visualizer <FILENAME> ... <RESOURCEDIR>" << std::endl;
+      if (argc < 2) {
+         std::cout << "Going in with " << std::endl;
+         RESOURCE_DIR = argv[2] + string("/");
+      }
       return 1;
+   } else {
+      RESOURCE_DIR = argv[argc-1] + string("/");
    }
-   RESOURCE_DIR = argv[2] + string("/");
    g_width = 640;
    g_height = 480;
-   Aquila::WaveFile wav(argv[1]);
-   std::cout << "Loaded file: " << wav.getFilename()
-      << " (" << wav.getBitsPerSample() << "b)" << std::endl;
-   //Aquila::SampleType maxValue = 0, minValue = 0, average = 0;
-
-   // simple index-based iteration
-   double length = wav.getAudioLength();
-   interval = wav.getSamplesCount() / length;
-   printf("Ms per sample %lf\n samples %u\n ms %lf\n", interval, wav.getSamplesCount(), length);
-
-   for (std::size_t i = 0; i < wav.getSamplesCount(); ++i)
-   {
-      //if (i < 300)
-      //   std::cout << "Maximum sample value: " << wav.sample(i) << std::endl;
-      std::vector<Aquila::SampleType> v = {wav.sample(i)};
-      Aquila::SignalSource src(v, wav.getSampleFrequency());
-      if (Aquila::power(src) > maxValue)
-         maxValue = Aquila::power(src);
+   std::vector<Aquila::WaveFile> wavs;
+   for (int i = 0; argc > 2; i++, argc--) {
+      wavs.push_back(Aquila::WaveFile(argv[i+1]));
    }
-   std::cout << "Maximum sample value: " << maxValue << std::endl;
-
-   /* your main will always include a similar set up to establish your window
-      and GL context, etc. */
+   int *max = (int *)calloc(sizeof(int), wavs.size()), *min = (int *)calloc(sizeof(int), wavs.size());
+   std::vector<std::pair<double,double>> ranges;
+   interval = (double *)calloc(sizeof(double), wavs.size());
+   int i = 0;
+   for (Aquila::WaveFile wav : wavs) {
+      std::cout << "Loaded file: " << wav.getFilename() << " (" << wav.getBitsPerSample() << "b)" << std::endl;
+      Aquila::SampleType maxValue = 0, minValue = 0;
+      interval[i] = wav.getSamplesCount() / wav.getAudioLength();
+      for (std::size_t i = 0; i < wav.getSamplesCount(); ++i)
+      {
+         std::vector<Aquila::SampleType> v = {wav.sample(i)};
+         Aquila::SignalSource src(v, wav.getSampleFrequency());
+         if (Aquila::power(src) > maxValue)
+            maxValue = Aquila::power(src);
+         if (Aquila::power(src) < minValue)
+            minValue = Aquila::power(src);
+      }
+      max[i] = maxValue;
+      min[i] = minValue;
+      ranges.push_back(std::pair<double,double>(0, maxValue));
+      i++;
+   }
+   // /* your main will always include a similar set up to establish your window
+   //    and GL context, etc. */
 
    // Set error callback as openGL will report errors but they need a call back
    glfwSetErrorCallback(error_callback);
@@ -522,42 +526,29 @@ int main(int argc, char *argv[]) {
    glfwSetFramebufferSizeCallback(window, resize_callback);
 
 
-   // iterator usage
-   //for (auto it = wav.begin(); it != wav.end(); ++it)
-   //{
-   //   if (*it < minValue)
-   //      minValue = *it;
-   //}
-   //std::cout << "Minimum sample value: " << minValue << std::endl;
-
-   //// range-based for loop
-   //for (auto sample : wav)
-   //{
-   //   average += sample;
-   //}
-   //average /= wav.getSamplesCount();
-   //std::cout << "Average: " << average << std::endl;
-
-   //// STL algorithms work too, so the previous examples could be rewritten
-   //// using max/min_element.
-   //int limit = 5000;
-   //int aboveLimit = std::count_if(
-   //      wav.begin(),
-   //      wav.end(),
-   //      [limit] (Aquila::SampleType sample) {
-   //      return sample > limit;
-   //      }
-   //      );
-   //std::cout << "There are " << aboveLimit << " samples greater than "
-   //   << limit << std::endl;
-
    init();
    initGeom();
-
-   std::thread sound (PlayMusic, wav);
+   std::vector<std::thread> sounds;
+   for (Aquila::WaveFile wav : wavs) {
+      sounds.push_back(std::thread(PlayMusic, wav));
+   }
+   lastTime = (std::chrono::milliseconds *)calloc(sizeof(milliseconds), wavs.size());
+   for (size_t i = 0; i < wavs.size(); i++) {
+      lastTime[i] = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
+   }
    // Loop until the user closes the window.
    while(!glfwWindowShouldClose(window)) {
-      render(wav);
+      glfwGetFramebufferSize(window, &g_width, &g_height);
+      glViewport(0, 0, g_width, g_height);
+
+      //Clear framebuffer.
+      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+      i = 0;
+      for (Aquila::WaveFile wav : wavs) {
+         std::pair<double,double> range = ranges.at(i);
+         render(wav, range, std::pair<double,double>(.5, 1.5), i);
+         i++;
+      }
       // Swap front and back buffers.
       glfwSwapBuffers(window);
       // Poll for and process events.
@@ -566,8 +557,11 @@ int main(int argc, char *argv[]) {
    // Quit program.
    glfwDestroyWindow(window);
    glfwTerminate();
-   std::cout << "^C to stop song" << std::endl;
-   sound.join();
-   std::cout << "Song done" << std::endl;
+    std::cout << "^C to stop music" << std::endl;
+   for (size_t i = 0; i < sounds.size(); i++) {
+      sounds.at(i).join();
+      std::cout << "^C to stop song" << std::endl;
+   }
+   std::cout << "Music done" << std::endl;
    return 0;
 }
