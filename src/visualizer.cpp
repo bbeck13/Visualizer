@@ -37,6 +37,7 @@ shared_ptr<Program> prog;
 shared_ptr<Program> progP;
 shared_ptr<Program> progPh;
 shared_ptr<Shape> shape;
+bool play = false;
 float lightPos[3] = {-0.5f, 0.0f, 1.0f};
 float lightColor[3] = {0.4f, 0.1f, 0.6f};
 Eigen::Vector3f eyePos(0,0,0);
@@ -279,8 +280,8 @@ static void render(Aquila::WaveFile wav, std::pair<double, double> from, std::pa
    int sampleNum = 0;
    //std::pair<double,double> from(0, maxValue), to(1, 2.5);
    double scale = mapRange(from, to, wav.sample(0));
-   static double x[4] = {randfloat(-3.0f, 3.0f), randfloat(-3.0f, 3.0f), randfloat(-3.0f, 3.0f),randfloat(-3.0f, 3.0f)},
-                 y[4] = {randfloat(-3.0f, 3.0f), randfloat(-3.0f, 3.0f), randfloat(-3.0f, 3.0f),randfloat(-3.0f, 3.0f)};
+   static double x[4] = {randfloat(-2.0f, 2.0f), randfloat(-2.0f, 2.0f), randfloat(-2.0f, 2.0f),randfloat(-2.0f, 2.0f)},
+                 y[4] = {randfloat(-2.0f, 2.0f), randfloat(-2.0f, 2.0f), randfloat(-2.0f, 2.0f),randfloat(-2.0f, 2.0f)};
    milliseconds ms = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
    diffTime = ms.count() - lastTime[timeIdx].count();
    sampleNum = diffTime*interval[timeIdx];
@@ -432,6 +433,8 @@ static void render(Aquila::WaveFile wav, std::pair<double, double> from, std::pa
 }
 
 void PlayMusic(Aquila::WaveFile wav) {
+   while(!play)
+      ;
    if(system(NULL)) {
       std::ostringstream stringStream;
       stringStream << "canberra-gtk-play -f " << wav.getFilename();
@@ -536,6 +539,7 @@ int main(int argc, char *argv[]) {
    for (size_t i = 0; i < wavs.size(); i++) {
       lastTime[i] = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
    }
+   play = true;
    // Loop until the user closes the window.
    while(!glfwWindowShouldClose(window)) {
       glfwGetFramebufferSize(window, &g_width, &g_height);
@@ -544,6 +548,7 @@ int main(int argc, char *argv[]) {
       //Clear framebuffer.
       glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
       i = 0;
+      //TODO call render with a vector of wavs instead of for each individual wav
       for (Aquila::WaveFile wav : wavs) {
          std::pair<double,double> range = ranges.at(i);
          render(wav, range, std::pair<double,double>(.5, 1.5), i);
