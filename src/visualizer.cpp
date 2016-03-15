@@ -29,7 +29,13 @@ GLFWwindow *window; // Main application window
 string RESOURCE_DIR = ""; // Where the resources are loaded from
 shared_ptr<Program> prog;
 shared_ptr<Program> progP;
+shared_ptr<Program> progPh;
 shared_ptr<Shape> shape;
+float lightPos[3] = {-0.5f, 0.0f, 1.0f};
+float lightColor[3] = {1.0f, 1.0f, 1.0f};
+Eigen::Vector3f eyePos(0,0,0);
+Eigen::Vector3f lookAtPos(0,0,-5);
+Eigen::Vector3f up(0, 1 ,0);
 
 milliseconds lastTime;
 double interval;
@@ -126,6 +132,28 @@ static void init() {
    prog->addAttribute("vertPos");
    prog->addAttribute("vertNor");
    prog->addAttribute("vertTex");
+
+   progPh = make_shared<Program>();
+   progPh->setVerbose(true);
+   progPh->setShaderNames(RESOURCE_DIR + "phong_vert.glsl", RESOURCE_DIR + "phong_frag.glsl");
+   progPh->init();
+   progPh->addUniform("ViewMatrix");
+   progPh->addUniform("ModelMatrix");
+   progPh->addUniform("P");
+   progPh->addUniform("MatAmb");
+   progPh->addUniform("MatDif");
+   progPh->addUniform("NColor");
+   progPh->addUniform("ShadingOp");
+   progPh->addUniform("lightPos");
+   progPh->addUniform("lightColor");
+   progPh->addUniform("specular");
+   progPh->addUniform("shine");
+   progPh->addAttribute("vertPos");
+   progPh->addAttribute("vertNor");
+   progPh->addAttribute("vertTex");
+   progPh->addAttribute("vertPos");
+   progPh->addAttribute("vertNor");
+   progPh->addAttribute("vertTex");
 
    //////////////////////////////////////////////////////
    // Initialize the particles
@@ -329,7 +357,6 @@ static void render(Aquila::WaveFile wav) {
    MV->loadIdentity();
    MV->rotate(sampleNum, Vector3f(0, 0, 1));
    MV->translate(Vector3f(2, -2, -10));
-   //MV->translate(Vector3f(0, scale, 0));
    MV->scale(Vector3f(scale, scale, scale));
    prog->bind();
    glUniformMatrix4fv(prog->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
@@ -337,18 +364,34 @@ static void render(Aquila::WaveFile wav) {
    shape->draw(prog);
    prog->unbind();
 
+   progPh->bind();
    scale = mapRange(from, to, Aquila::power(src));
-   MV->pushMatrix();
-   MV->loadIdentity();
-   MV->rotate(sampleNum, Vector3f(0, 0, 1));
-   MV->translate(Vector3f(-2, 2, -10));
-   //MV->translate(Vector3f(0, scale, 0));
-   MV->scale(Vector3f(scale, scale, scale));
-   prog->bind();
-   glUniformMatrix4fv(prog->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
-   glUniformMatrix4fv(prog->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
-   shape->draw(prog);
-   prog->unbind();
+   auto M = make_shared<MatrixStack>();
+   auto V = make_shared<MatrixStack>();
+   V->pushMatrix();
+   V->lookAt(eyePos, lookAtPos, up);
+   // Apply perspective projection.
+   P->pushMatrix();
+   P->perspective(45.0f, aspect, 0.01f, 100.0f);
+   M->pushMatrix();
+   M->loadIdentity();
+   M->translate(Vector3f(0, 0, -5));
+   M->scale(Vector3f(scale, scale, scale));
+   glUniformMatrix4fv(progPh->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
+   glUniformMatrix4fv(progPh->getUniform("ViewMatrix"), 1, GL_FALSE, V->topMatrix().data());
+
+   glUniform3f(progPh->getUniform("MatAmb"), 0.3294, 0.2235, 0.02745);
+   glUniform3f(progPh->getUniform("MatDif"), 0.7804, 0.5686, 0.11373);
+   glUniform3f(progPh->getUniform("specular"), 0.9922, 0.941176, 0.80784);
+   glUniform1f(progPh->getUniform("shine"), 27.9);
+   glUniformMatrix4fv(progPh->getUniform("ModelMatrix"), 1, GL_FALSE, M->topMatrix().data());
+   glUniform1f(progPh->getUniform("NColor"), 0);
+   glUniform3fv(progPh->getUniform("lightPos"), 1, lightPos);
+   glUniform3fv(progPh->getUniform("lightColor"), 1, lightColor);
+   shape->draw(progPh);
+   M->popMatrix();
+   progPh->unbind();
+   P->popMatrix();
 
    //particles!
    updateParticles();
