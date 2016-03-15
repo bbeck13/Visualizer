@@ -304,13 +304,22 @@ static void render() {
    V->lookAt(eyePos, lookAtPos, up);
 
    size_t i = 0;
+   size_t done = 0;
    while (i < wavs.size()) {
       milliseconds ms = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
       diffTime = ms.count() - lastTime.at(i).count();
       sampleNum = diffTime*interval.at(i);
+      if ((size_t)sampleNum >= wavs.at(i).getSamplesCount()) {
+         done++;
+         if (done == wavs.size()) {
+            glfwSetWindowShouldClose(window, GL_TRUE);
+            return;
+         }
+
+      }
       std::vector<Aquila::SampleType> v = {wavs.at(i).sample(sampleNum)};
       Aquila::SignalSource src(v, wavs.at(i).getSampleFrequency());
-      scale = mapRange(ranges.at(i), std::pair<double,double>(.5, 2), Aquila::power(src));
+      scale = mapRange(ranges.at(i), std::pair<double,double>(1, 1.5), Aquila::power(src));
       std::cout << "interval " << interval.at(i) << " scale " << scale << std::endl;
       //draw!!
       progPh->bind();
@@ -333,9 +342,9 @@ static void render() {
       M->popMatrix();
       progPh->unbind();
       i++;
+      P->popMatrix();
+      V->popMatrix();
    }
-   P->popMatrix();
-   V->popMatrix();
    ///diff = scale_temp - scale;
 
    //if (diff > .3 || diff < -.3) {
@@ -400,54 +409,44 @@ static void render() {
 
 
    //particles!
-   //UpdateParticles();
-   //UpdateGeom();
-   //// Apply perspective projection.
-   //P->pushMatrix();
-   //P->perspective(45.0f, aspect, 0.01f, 100.0f);
-   //MV->loadIdentity();
-   ////camera rotate
-   //MV->rotate(camRot, Vector3f(0, 1, 0));
+   updateParticles();
+   updateGeom();
+   // Apply perspective projection.
+   P->pushMatrix();
+   P->perspective(45.0f, aspect, 0.01f, 100.0f);
+   MV->loadIdentity();
+   //camera rotate
+   MV->rotate(camRot, Vector3f(0, 1, 0));
 
-   //// Draw
-   //ProgP->bind();
-   //GlUniformMatrix4fv(progP->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
+   // Draw
+   progP->bind();
+   glUniformMatrix4fv(progP->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
 
-   //GlUniformMatrix4fv(progP->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
+   glUniformMatrix4fv(progP->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
 
-   //GlEnableVertexAttribArray(0);
-   //GlBindBuffer(GL_ARRAY_BUFFER, pointsbuffer);
-   //GlVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0,(void*)0);
+   glEnableVertexAttribArray(0);
+   glBindBuffer(GL_ARRAY_BUFFER, pointsbuffer);
+   glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0,(void*)0);
 
-   //GlEnableVertexAttribArray(1);
-   //GlBindBuffer(GL_ARRAY_BUFFER, colorbuffer);
-   //GlVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 0,(void*)0);
+   glEnableVertexAttribArray(1);
+   glBindBuffer(GL_ARRAY_BUFFER, colorbuffer);
+   glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 0,(void*)0);
 
-   //GlVertexAttribDivisor(0, 1);
-   //GlVertexAttribDivisor(1, 1);
-   //// Draw the points !
-   ////std::cout << "sample num " << sampleNum << " Num samples " << wav.getSamplesCount() << std::endl;
-   //GlDrawArraysInstanced(GL_POINTS, 0, 1, numP);
-   ////std::cout << "sample num " << sampleNum << " Num samples " << wav.getSamplesCount() << std::endl;
+   glVertexAttribDivisor(0, 1);
+   glVertexAttribDivisor(1, 1);
+   // Draw the points !
+   //std::cout << "sample num " << sampleNum << " Num samples " << wav.getSamplesCount() << std::endl;
+   glDrawArraysInstanced(GL_POINTS, 0, 1, numP);
+   //std::cout << "sample num " << sampleNum << " Num samples " << wav.getSamplesCount() << std::endl;
 
-   //GlVertexAttribDivisor(0, 0);
-   //GlVertexAttribDivisor(1, 0);
-   //GlDisableVertexAttribArray(0);
-   //GlDisableVertexAttribArray(1);
-   //ProgP->unbind();
-   //// Pop matrix stacks.
-   //P->popMatrix();
+   glVertexAttribDivisor(0, 0);
+   glVertexAttribDivisor(1, 0);
+   glDisableVertexAttribArray(0);
+   glDisableVertexAttribArray(1);
+   progP->unbind();
+   // Pop matrix stacks.
+   P->popMatrix();
 
-   i = 0;
-   size_t done = 0;
-   while (i < wavs.size()) {
-      if ((size_t)sampleNum >= wavs.at(i).getSamplesCount()) {
-         done++;
-      }
-      i++;
-   }
-   if (done == wavs.size())
-      glfwSetWindowShouldClose(window, GL_TRUE);
 }
 
 void PlayMusic(Aquila::WaveFile wav) {
@@ -482,15 +481,17 @@ int main(int argc, char *argv[]) {
    for (int i = 0; argc > 2; i++, argc--) {
       wavs.push_back(Aquila::WaveFile(argv[i+1]));
    }
-   int *max = (int *)calloc(sizeof(int), wavs.size()), *min = (int *)calloc(sizeof(int), wavs.size());
    int i = 0;
+   //set up audio information
    for (Aquila::WaveFile wav : wavs) {
       std::cout << "Loaded file: " << wav.getFilename() << " (" << wav.getBitsPerSample() << "b)" << std::endl;
       std::cout << wav.getSamplesCount() << " samples at " << wav.getAudioLength() << " ms" << std::endl;
+
       Aquila::SampleType maxValue = 0, minValue = 0;
+
       interval.push_back((double)wav.getSamplesCount() / (double)wav.getAudioLength());
-      for (std::size_t i = 0; i < wav.getSamplesCount(); ++i)
-      {
+
+      for (std::size_t i = 0; i < wav.getSamplesCount(); ++i) {
          std::vector<Aquila::SampleType> v = {wav.sample(i)};
          Aquila::SignalSource src(v, wav.getSampleFrequency());
          if (Aquila::power(src) > maxValue)
@@ -498,13 +499,11 @@ int main(int argc, char *argv[]) {
          if (Aquila::power(src) < minValue)
             minValue = Aquila::power(src);
       }
-      max[i] = maxValue;
-      min[i] = minValue;
-      ranges.push_back(std::pair<double,double>(0, maxValue));
+      ranges.push_back(std::pair<double,double>(minValue, maxValue));
       i++;
    }
-   // /* your main will always include a similar set up to establish your window
-   //    and GL context, etc. */
+   /* your main will always include a similar set up to establish your window
+      and GL context, etc. */
 
    // Set error callback as openGL will report errors but they need a call back
    glfwSetErrorCallback(error_callback);
@@ -560,14 +559,6 @@ int main(int argc, char *argv[]) {
    // Loop until the user closes the window.
    while(!glfwWindowShouldClose(window)) {
       render();
-      //i = 0;
-      ////TODO call render with a vector of wavs instead of for each individual wav
-      //for (Aquila::WaveFile wav : wavs) {
-      //   std::pair<double,double> range = ranges.at(i);
-      //   render(av, range, std::pair<double,double>(.5, 1.5), i);
-      //   i++;
-      //}
-      // Swap front and back buffers.
       glfwSwapBuffers(window);
       // Poll for and process events.
       glfwPollEvents();
@@ -578,7 +569,7 @@ int main(int argc, char *argv[]) {
    std::cout << "^C to stop music" << std::endl;
    for (size_t i = 0; i < sounds.size(); i++) {
       sounds.at(i).join();
-      std::cout << "song " << i << " stopped" << std::endl;
+      std::cout << "song " << i + 1 << " stopped" << std::endl;
    }
    std::cout << "Music done" << std::endl;
    return 0;
