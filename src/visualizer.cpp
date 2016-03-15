@@ -44,8 +44,12 @@ Eigen::Vector3f eyePos(0,0,0);
 Eigen::Vector3f lookAtPos(0,0,-5);
 Eigen::Vector3f up(0, 1 ,0);
 
-milliseconds *lastTime;
-double *interval;
+//information for a each audio file
+std::vector<Aquila::WaveFile> wavs;
+std::vector<std::pair<double,double>> ranges;
+std::vector<milliseconds> lastTime;
+std::vector<double> interval;
+
 int g_width, g_height;
 float camRot;
 
@@ -275,22 +279,63 @@ tVal mapRange(std::pair<tVal,tVal> a, std::pair<tVal, tVal> b, tVal inVal) {
    return outVal;
 }
 
-static void render(Aquila::WaveFile wav, std::pair<double, double> from, std::pair<double, double> to, int timeIdx) {
+static void render() {
+   glfwGetFramebufferSize(window, &g_width, &g_height);
+   glViewport(0, 0, g_width, g_height);
+
+   //Clear framebuffer.
+   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
    double diffTime;// scale_temp;
    int sampleNum = 0;
    //std::pair<double,double> from(0, maxValue), to(1, 2.5);
-   double scale = mapRange(from, to, wav.sample(0));
+   double scale;
    static double x[4] = {randfloat(-2.0f, 2.0f), randfloat(-2.0f, 2.0f), randfloat(-2.0f, 2.0f),randfloat(-2.0f, 2.0f)},
                  y[4] = {randfloat(-2.0f, 2.0f), randfloat(-2.0f, 2.0f), randfloat(-2.0f, 2.0f),randfloat(-2.0f, 2.0f)};
-   milliseconds ms = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
-   diffTime = ms.count() - lastTime[timeIdx].count();
-   sampleNum = diffTime*interval[timeIdx];
-   //std::cout << "ms " << ms.count() - lastTime[timeIdx].count() << " interval "  << interval[timeIdx] << std::endl;
-   //scale = mapRange(from, to, wav.sample(sampleNum));
-   std::vector<Aquila::SampleType> v = {wav.sample(sampleNum)};
-   Aquila::SignalSource src(v, wav.getSampleFrequency());
-   //std::cout << "power? " << Aquila::power(src) << std::endl;
-   scale = mapRange(from, to, Aquila::power(src));
+
+   float aspect = g_width/(float)g_height;
+   auto P = make_shared<MatrixStack>();
+   auto MV = make_shared<MatrixStack>();
+   //Apply perspective projection.
+   P->pushMatrix();
+   P->perspective(45.0f, aspect, 0.01f, 100.0f);
+   auto M = make_shared<MatrixStack>();
+   auto V = make_shared<MatrixStack>();
+   V->pushMatrix();
+   V->lookAt(eyePos, lookAtPos, up);
+
+   size_t i = 0;
+   while (i < wavs.size()) {
+      milliseconds ms = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
+      diffTime = ms.count() - lastTime.at(i).count();
+      sampleNum = diffTime*interval.at(i);
+      std::vector<Aquila::SampleType> v = {wavs.at(i).sample(sampleNum)};
+      Aquila::SignalSource src(v, wavs.at(i).getSampleFrequency());
+      scale = mapRange(ranges.at(i), std::pair<double,double>(.5, 2), Aquila::power(src));
+      std::cout << "interval " << interval.at(i) << " scale " << scale << std::endl;
+      //draw!!
+      progPh->bind();
+      M->pushMatrix();
+      M->loadIdentity();
+      M->translate(Vector3f(x[i], y[i], -5));
+      M->scale(Vector3f(scale, scale, scale));
+      glUniformMatrix4fv(progPh->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
+      glUniformMatrix4fv(progPh->getUniform("ViewMatrix"), 1, GL_FALSE, V->topMatrix().data());
+
+      glUniform3f(progPh->getUniform("MatAmb"), 0.3294, 0.2235, 0.02745);
+      glUniform3f(progPh->getUniform("MatDif"), 0.7804, 0.5686, 0.11373);
+      glUniform3f(progPh->getUniform("specular"), 0.9922, 0.941176, 0.80784);
+      glUniform1f(progPh->getUniform("shine"), 27.9);
+      glUniformMatrix4fv(progPh->getUniform("ModelMatrix"), 1, GL_FALSE, M->topMatrix().data());
+      glUniform1f(progPh->getUniform("NColor"), 0);
+      glUniform3fv(progPh->getUniform("lightPos"), 1, lightPos);
+      glUniform3fv(progPh->getUniform("lightColor"), 1, lightColor);
+      shape->draw(progPh);
+      M->popMatrix();
+      progPh->unbind();
+      i++;
+   }
+   P->popMatrix();
+   V->popMatrix();
    ///diff = scale_temp - scale;
 
    //if (diff > .3 || diff < -.3) {
@@ -307,12 +352,6 @@ static void render(Aquila::WaveFile wav, std::pair<double, double> from, std::pa
    //std::cout << "max " << maxValue << " min " << minValue << " cur " << wav.sample(sampleNum) << std::endl;
 
 
-   float aspect = g_width/(float)g_height;
-   auto P = make_shared<MatrixStack>();
-   auto MV = make_shared<MatrixStack>();
-   //Apply perspective projection.
-   P->pushMatrix();
-   P->perspective(45.0f, aspect, 0.01f, 100.0f);
 
    //Draw mesh using GLSL.
    //MV->pushMatrix();
@@ -359,34 +398,6 @@ static void render(Aquila::WaveFile wav, std::pair<double, double> from, std::pa
    //shape->draw(prog);
    //prog->unbind();
 
-   progPh->bind();
-   scale = mapRange(from, to, Aquila::power(src));
-   auto M = make_shared<MatrixStack>();
-   auto V = make_shared<MatrixStack>();
-   V->pushMatrix();
-   V->lookAt(eyePos, lookAtPos, up);
-   // Apply perspective projection.
-   P->pushMatrix();
-   P->perspective(45.0f, aspect, 0.01f, 100.0f);
-   M->pushMatrix();
-   M->loadIdentity();
-   M->translate(Vector3f(x[timeIdx], y[timeIdx ], -5));
-   M->scale(Vector3f(scale, scale, scale));
-   glUniformMatrix4fv(progPh->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
-   glUniformMatrix4fv(progPh->getUniform("ViewMatrix"), 1, GL_FALSE, V->topMatrix().data());
-
-   glUniform3f(progPh->getUniform("MatAmb"), 0.3294, 0.2235, 0.02745);
-   glUniform3f(progPh->getUniform("MatDif"), 0.7804, 0.5686, 0.11373);
-   glUniform3f(progPh->getUniform("specular"), 0.9922, 0.941176, 0.80784);
-   glUniform1f(progPh->getUniform("shine"), 27.9);
-   glUniformMatrix4fv(progPh->getUniform("ModelMatrix"), 1, GL_FALSE, M->topMatrix().data());
-   glUniform1f(progPh->getUniform("NColor"), 0);
-   glUniform3fv(progPh->getUniform("lightPos"), 1, lightPos);
-   glUniform3fv(progPh->getUniform("lightColor"), 1, lightColor);
-   shape->draw(progPh);
-   M->popMatrix();
-   progPh->unbind();
-   P->popMatrix();
 
    //particles!
    //UpdateParticles();
@@ -427,9 +438,16 @@ static void render(Aquila::WaveFile wav, std::pair<double, double> from, std::pa
    //// Pop matrix stacks.
    //P->popMatrix();
 
-   if ((size_t)sampleNum >= wav.getSamplesCount()) {
-      glfwSetWindowShouldClose(window, GL_TRUE);
+   i = 0;
+   size_t done = 0;
+   while (i < wavs.size()) {
+      if ((size_t)sampleNum >= wavs.at(i).getSamplesCount()) {
+         done++;
+      }
+      i++;
    }
+   if (done == wavs.size())
+      glfwSetWindowShouldClose(window, GL_TRUE);
 }
 
 void PlayMusic(Aquila::WaveFile wav) {
@@ -461,18 +479,16 @@ int main(int argc, char *argv[]) {
    }
    g_width = 640;
    g_height = 480;
-   std::vector<Aquila::WaveFile> wavs;
    for (int i = 0; argc > 2; i++, argc--) {
       wavs.push_back(Aquila::WaveFile(argv[i+1]));
    }
    int *max = (int *)calloc(sizeof(int), wavs.size()), *min = (int *)calloc(sizeof(int), wavs.size());
-   std::vector<std::pair<double,double>> ranges;
-   interval = (double *)calloc(sizeof(double), wavs.size());
    int i = 0;
    for (Aquila::WaveFile wav : wavs) {
       std::cout << "Loaded file: " << wav.getFilename() << " (" << wav.getBitsPerSample() << "b)" << std::endl;
+      std::cout << wav.getSamplesCount() << " samples at " << wav.getAudioLength() << " ms" << std::endl;
       Aquila::SampleType maxValue = 0, minValue = 0;
-      interval[i] = wav.getSamplesCount() / wav.getAudioLength();
+      interval.push_back((double)wav.getSamplesCount() / (double)wav.getAudioLength());
       for (std::size_t i = 0; i < wav.getSamplesCount(); ++i)
       {
          std::vector<Aquila::SampleType> v = {wav.sample(i)};
@@ -535,25 +551,22 @@ int main(int argc, char *argv[]) {
    for (Aquila::WaveFile wav : wavs) {
       sounds.push_back(std::thread(PlayMusic, wav));
    }
-   lastTime = (std::chrono::milliseconds *)calloc(sizeof(milliseconds), wavs.size());
-   for (size_t i = 0; i < wavs.size(); i++) {
-      lastTime[i] = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
-   }
+   //make these two events happen as close as possible
+   lastTime.push_back(duration_cast<milliseconds>(system_clock::now().time_since_epoch()));
    play = true;
+   for (size_t i = 1; i < wavs.size(); i++) {
+      lastTime.push_back(lastTime.at(0));
+   }
    // Loop until the user closes the window.
    while(!glfwWindowShouldClose(window)) {
-      glfwGetFramebufferSize(window, &g_width, &g_height);
-      glViewport(0, 0, g_width, g_height);
-
-      //Clear framebuffer.
-      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-      i = 0;
-      //TODO call render with a vector of wavs instead of for each individual wav
-      for (Aquila::WaveFile wav : wavs) {
-         std::pair<double,double> range = ranges.at(i);
-         render(wav, range, std::pair<double,double>(.5, 1.5), i);
-         i++;
-      }
+      render();
+      //i = 0;
+      ////TODO call render with a vector of wavs instead of for each individual wav
+      //for (Aquila::WaveFile wav : wavs) {
+      //   std::pair<double,double> range = ranges.at(i);
+      //   render(av, range, std::pair<double,double>(.5, 1.5), i);
+      //   i++;
+      //}
       // Swap front and back buffers.
       glfwSwapBuffers(window);
       // Poll for and process events.
@@ -562,10 +575,10 @@ int main(int argc, char *argv[]) {
    // Quit program.
    glfwDestroyWindow(window);
    glfwTerminate();
-    std::cout << "^C to stop music" << std::endl;
+   std::cout << "^C to stop music" << std::endl;
    for (size_t i = 0; i < sounds.size(); i++) {
       sounds.at(i).join();
-      std::cout << "^C to stop song" << std::endl;
+      std::cout << "song " << i << " stopped" << std::endl;
    }
    std::cout << "Music done" << std::endl;
    return 0;
