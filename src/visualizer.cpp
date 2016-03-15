@@ -1,5 +1,10 @@
 #include "aquila/global.h"
 #include "aquila/source/WaveFile.h"
+#include "aquila/tools/TextPlot.h"
+#include "aquila/transform/AquilaFft.h"
+#include "aquila/transform/OouraFft.h"
+#include "aquila/source/generator/SineGenerator.h"
+#include "aquila/transform/FftFactory.h"
 #include <algorithm>
 #include <exception>
 #include <utility>
@@ -25,8 +30,7 @@ using namespace std;
 using namespace Eigen;
 using namespace std::chrono;
 
-float randfloat(float l, float h)
-{
+float randfloat(float l, float h) {
    float r = rand() / (float)RAND_MAX;
    return (1.0f - r) * l + r * h;
 }
@@ -36,19 +40,22 @@ string RESOURCE_DIR = ""; // Where the resources are loaded from
 shared_ptr<Program> prog;
 shared_ptr<Program> progP;
 shared_ptr<Program> progPh;
-shared_ptr<Shape> shape;
+shared_ptr<Shape> sphere;
+shared_ptr<Shape> cube;
 bool play = false;
 float lightPos[3] = {-0.5f, 0.0f, 1.0f};
 float lightColor[3] = {0.4f, 0.1f, 0.6f};
 Eigen::Vector3f eyePos(0,0,0);
 Eigen::Vector3f lookAtPos(0,0,-5);
 Eigen::Vector3f up(0, 1 ,0);
+std::pair<double,double> scaleTo(.5, 1.5);
 
 //information for a each audio file
 std::vector<Aquila::WaveFile> wavs;
 std::vector<std::pair<double,double>> ranges;
 std::vector<milliseconds> lastTime;
 std::vector<double> interval;
+std::vector<int> lastSample;
 
 int g_width, g_height;
 float camRot;
@@ -128,11 +135,16 @@ static void init() {
    progP->addTexture(&texture);
    glEnable(GL_DEPTH_TEST);
 
-   // Initialize mesh.
-   shape = make_shared<Shape>();
-   shape->loadMesh(RESOURCE_DIR + "round.obj");
-   shape->resize();
-   shape->init();
+   // Initialize meshes.
+   sphere = make_shared<Shape>();
+   sphere->loadMesh(RESOURCE_DIR + "round.obj");
+   sphere->resize();
+   sphere->init();
+
+   cube = make_shared<Shape>();
+   cube->loadMesh(RESOURCE_DIR + "round.obj");
+   cube->resize();
+   cube->init();
 
    prog = make_shared<Program>();
    prog->setVerbose(true);
@@ -279,6 +291,21 @@ tVal mapRange(std::pair<tVal,tVal> a, std::pair<tVal, tVal> b, tVal inVal) {
    return outVal;
 }
 
+static void drawGraph(Aquila::SpectrumType spectrum,
+      std::shared_ptr<MatrixStack> P, std::shared_ptr<MatrixStack> M, std::shared_ptr<MatrixStack> V) {
+   double len = spectrum.size();
+   std::vector<double> absSpectrum(len);
+   for (size_t i = 0; i < len; i++) {
+      absSpectrum[i] = std::abs(spectrum[i]);
+   }
+   const double max = *std::max_element(absSpectrum.begin(), absSpectrum.end());
+   const double min = *std::min_element(absSpectrum.begin(), absSpectrum.end());
+   const double range = max - min;
+   const double size = len / 2.0f, m_width = 64, m_height = 16;
+   //Aquila::TextPlot plot("Input signal");
+   //plot.plot(absSpectrum);
+}
+
 static void render() {
    glfwGetFramebufferSize(window, &g_width, &g_height);
    glViewport(0, 0, g_width, g_height);
@@ -314,13 +341,17 @@ static void render() {
          if (done == wavs.size()) {
             glfwSetWindowShouldClose(window, GL_TRUE);
             return;
+         } else {
+            i++;
+            continue;
          }
-
       }
-      std::vector<Aquila::SampleType> v = {wavs.at(i).sample(sampleNum)};
+      std::vector<Aquila::SampleType> v;
+      for (int j = lastSample.at(i); j <= sampleNum; j++) {
+         v.push_back(wavs.at(i).sample(j));
+      }
       Aquila::SignalSource src(v, wavs.at(i).getSampleFrequency());
-      scale = mapRange(ranges.at(i), std::pair<double,double>(1, 1.5), Aquila::power(src));
-      std::cout << "interval " << interval.at(i) << " scale " << scale << std::endl;
+      scale = mapRange(ranges.at(i), scaleTo, Aquila::power(src));
       //draw!!
       progPh->bind();
       M->pushMatrix();
@@ -338,13 +369,35 @@ static void render() {
       glUniform1f(progPh->getUniform("NColor"), 0);
       glUniform3fv(progPh->getUniform("lightPos"), 1, lightPos);
       glUniform3fv(progPh->getUniform("lightColor"), 1, lightColor);
-      shape->draw(progPh);
+      sphere->draw(progPh);
       M->popMatrix();
+
+      //std::cout << "samples " << samples << std::endl;
+      if (i == 0) {
+         size_t samples = sampleNum - lastSample.at(i);
+
+         Aquila::AquilaFft coldTurkey(64);
+         Aquila::SpectrumType spectrum = coldTurkey.fft(src.toArray());
+         drawGraph(spectrum, P, M, V);
+
+         //std::cout << "fft Vector (" << aquilaSpectrum.size() << ") ";
+         //for (Aquila::ComplexType type : aquilaSpectrum) {
+         //   std::cout << type.real() << " ";
+         //}
+         //std::cout << std::endl;
+         //Aquila::TextPlot plot("Input signal");
+         //plot.setTitle("Spectrum");
+         //plot.plotSpectrum(aquilaSpectrum);
+
+         //std::cout << "interval " << interval.at(i) << " scale " << scale << std::endl;
+      }
+
       progPh->unbind();
+      lastSample.at(i) = sampleNum;
       i++;
-      P->popMatrix();
-      V->popMatrix();
    }
+   P->popMatrix();
+   V->popMatrix();
    ///diff = scale_temp - scale;
 
    //if (diff > .3 || diff < -.3) {
@@ -370,7 +423,7 @@ static void render() {
    //prog->bind();
    //glUniformMatrix4fv(prog->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
    //glUniformMatrix4fv(prog->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
-   //shape->draw(prog);
+   //sphere->draw(prog);
    //prog->unbind();
 
    //scale = mapRange(from, to, Aquila::energy(src));
@@ -381,7 +434,7 @@ static void render() {
    //prog->bind();
    //glUniformMatrix4fv(prog->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
    //glUniformMatrix4fv(prog->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
-   //shape->draw(prog);
+   //sphere->draw(prog);
    //prog->unbind();
 
    //scale = mapRange(from, to, Aquila::power(src));
@@ -393,7 +446,7 @@ static void render() {
    //prog->bind();
    //glUniformMatrix4fv(prog->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
    //glUniformMatrix4fv(prog->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
-   //shape->draw(prog);
+   //sphere->draw(prog);
    //prog->unbind();
 
    //scale = mapRange(from, to, Aquila::energy(src));
@@ -404,7 +457,7 @@ static void render() {
    //prog->bind();
    //glUniformMatrix4fv(prog->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
    //glUniformMatrix4fv(prog->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
-   //shape->draw(prog);
+   //sphere->draw(prog);
    //prog->unbind();
 
 
@@ -552,9 +605,11 @@ int main(int argc, char *argv[]) {
    }
    //make these two events happen as close as possible
    lastTime.push_back(duration_cast<milliseconds>(system_clock::now().time_since_epoch()));
+   lastSample.push_back(0);
    play = true;
    for (size_t i = 1; i < wavs.size(); i++) {
       lastTime.push_back(lastTime.at(0));
+      lastSample.push_back(lastSample.at(0));
    }
    // Loop until the user closes the window.
    while(!glfwWindowShouldClose(window)) {
