@@ -44,7 +44,7 @@ shared_ptr<Shape> sphere;
 shared_ptr<Shape> cube;
 bool play = false;
 float lightPos[3] = {-0.5f, 0.0f, 1.0f};
-float lightColor[3] = {0.4f, 0.1f, 0.6f};
+float lightColor[3] = {1.0f, 1.0f, 1.0f};
 Eigen::Vector3f eyePos(0,0,0);
 Eigen::Vector3f lookAtPos(0,0,-5);
 Eigen::Vector3f up(0, 1 ,0);
@@ -53,6 +53,7 @@ std::pair<double,double> scaleTo(.5, 1.5);
 //information for a each audio file
 std::vector<Aquila::WaveFile> wavs;
 std::vector<std::pair<double,double>> ranges;
+std::pair<double, double> fftRange;
 std::vector<milliseconds> lastTime;
 std::vector<double> interval;
 std::vector<int> lastSample;
@@ -142,7 +143,7 @@ static void init() {
    sphere->init();
 
    cube = make_shared<Shape>();
-   cube->loadMesh(RESOURCE_DIR + "round.obj");
+   cube->loadMesh(RESOURCE_DIR + "cube.obj");
    cube->resize();
    cube->init();
 
@@ -291,17 +292,103 @@ tVal mapRange(std::pair<tVal,tVal> a, std::pair<tVal, tVal> b, tVal inVal) {
    return outVal;
 }
 
-static void drawGraph(Aquila::SpectrumType spectrum,
+template <typename Iterator>
+void drawGraph(std::vector<double> spectrum, Iterator begin, Iterator end,
       std::shared_ptr<MatrixStack> P, std::shared_ptr<MatrixStack> M, std::shared_ptr<MatrixStack> V) {
-   double len = spectrum.size();
-   std::vector<double> absSpectrum(len);
-   for (size_t i = 0; i < len; i++) {
-      absSpectrum[i] = std::abs(spectrum[i]);
-   }
-   const double max = *std::max_element(absSpectrum.begin(), absSpectrum.end());
-   const double min = *std::min_element(absSpectrum.begin(), absSpectrum.end());
+   const double max = *std::max_element(begin, end);
+   const double min = *std::min_element(begin, end);
    const double range = max - min;
-   const double size = len / 2.0f, m_width = 64, m_height = 16;
+   const double size = spectrum.size() / 2.0f, m_width = 32, m_height = 16;
+   std::vector<std::vector<bool>> matrix(size);
+   std::vector<std::vector<bool>> matrix2(size);
+
+   begin += 2;
+   for (size_t xPos = 0; xPos < size; xPos++) {
+      matrix[xPos].resize(m_width, false);
+      double normalVal = (*begin++ - min +1) / range;
+      std::size_t yPos = m_height
+         - static_cast<size_t>(std::ceil(m_height * normalVal));
+
+      if (yPos >= m_height) {
+         yPos = m_height -1;
+      }
+      matrix[xPos][yPos] = true;
+   }
+   begin += 2;
+   for (size_t xPos = 0; xPos < size; xPos++) {
+      matrix2[xPos].resize(m_width, false);
+      double normalVal = (*begin++ - min + 1) / range;
+      std::size_t yPos = m_height
+         - static_cast<size_t>(std::ceil(m_height * normalVal));
+
+      if (yPos >= m_height) {
+         yPos = m_height -1;
+      }
+      if (matrix[xPos][yPos] == true) {
+         matrix[xPos][yPos] = false;
+      }
+      matrix2[xPos][yPos] = true;
+   }
+   //std::cout << "len = " << matrix.size() << std::endl;
+   size_t yPos = 0, xPos = 0;
+   for (float y = -4; y < 0; y += 0.25f) {
+      for (float x = -4; x < 4; x += 0.25f) {
+         if (matrix[xPos][yPos] == true) {
+            M->pushMatrix();
+            M->loadIdentity();
+            M->translate(Vector3f(x, -y, -15));
+            M->scale(Vector3f(.1, .1, .00000001));
+            float r, g, b;
+            b = 0;
+            g = mapRange(std::pair<float, float>(-4, 0), std::pair<float, float>(0 , 1), y);
+            r = 1 - g;
+            std::cout << "r " << r <<" g " << g << " b" << b <<std::endl;
+            glUniform3f(progPh->getUniform("MatAmb"), r, g, b);
+            glUniform3f(progPh->getUniform("MatDif"), r, g, b);
+            glUniform3f(progPh->getUniform("specular"), r, g ,b);
+            glUniform1f(progPh->getUniform("shine"), 27.9);
+            glUniformMatrix4fv(progPh->getUniform("ModelMatrix"), 1, GL_FALSE, M->topMatrix().data());
+            glUniform1f(progPh->getUniform("NColor"), 0);
+            glUniform3fv(progPh->getUniform("lightPos"), 1, lightPos);
+            glUniform3fv(progPh->getUniform("lightColor"), 1, lightColor);
+            cube->draw(progPh);
+            M->popMatrix();
+            for (size_t tempY = yPos; tempY < m_height; tempY++) {
+               matrix[xPos][tempY] = true;
+            }
+         }
+         xPos++;
+      }
+      yPos++;
+      xPos = 0;
+   }
+   /*yPos = 0;
+   for (float y = -3; y < 0.75; y += 0.25f) {
+      for (float x = -2.75; x < 5.25; x += 0.25f) {
+         if (matrix2[xPos][yPos] == true) {
+            M->pushMatrix();
+            M->loadIdentity();
+            M->translate(Vector3f(-x, y, -15));
+            M->scale(Vector3f(.1, .1, .00000001));
+            glUniform3f(progPh->getUniform("MatAmb"), 1, 1, 1);
+            glUniform3f(progPh->getUniform("MatDif"), 1, 1, 1);
+            glUniform3f(progPh->getUniform("specular"), 0.9922, 0.941176, 0.80784);
+            glUniform1f(progPh->getUniform("shine"), 27.9);
+            glUniformMatrix4fv(progPh->getUniform("ModelMatrix"), 1, GL_FALSE, M->topMatrix().data());
+            glUniform1f(progPh->getUniform("NColor"), 0);
+            glUniform3fv(progPh->getUniform("lightPos"), 1, lightPos);
+            glUniform3fv(progPh->getUniform("lightColor"), 1, lightColor);
+            cube->draw(progPh);
+            for (size_t tempY = yPos; tempY < m_height; tempY++) {
+               matrix2[xPos][tempY] = true;
+            }
+            M->popMatrix();
+         }
+         xPos++;
+      }
+      yPos++;
+      xPos = 0;
+   }*/
    //Aquila::TextPlot plot("Input signal");
    //plot.plot(absSpectrum);
 }
@@ -322,6 +409,7 @@ static void render() {
    float aspect = g_width/(float)g_height;
    auto P = make_shared<MatrixStack>();
    auto MV = make_shared<MatrixStack>();
+
    //Apply perspective projection.
    P->pushMatrix();
    P->perspective(45.0f, aspect, 0.01f, 100.0f);
@@ -329,9 +417,11 @@ static void render() {
    auto V = make_shared<MatrixStack>();
    V->pushMatrix();
    V->lookAt(eyePos, lookAtPos, up);
+   size_t i = 0, done = 0;
 
-   size_t i = 0;
-   size_t done = 0;
+   progPh->bind();
+   glUniformMatrix4fv(progPh->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
+   glUniformMatrix4fv(progPh->getUniform("ViewMatrix"), 1, GL_FALSE, V->topMatrix().data());
    while (i < wavs.size()) {
       milliseconds ms = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
       diffTime = ms.count() - lastTime.at(i).count();
@@ -353,13 +443,10 @@ static void render() {
       Aquila::SignalSource src(v, wavs.at(i).getSampleFrequency());
       scale = mapRange(ranges.at(i), scaleTo, Aquila::power(src));
       //draw!!
-      progPh->bind();
       M->pushMatrix();
       M->loadIdentity();
       M->translate(Vector3f(x[i], y[i], -5));
       M->scale(Vector3f(scale, scale, scale));
-      glUniformMatrix4fv(progPh->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
-      glUniformMatrix4fv(progPh->getUniform("ViewMatrix"), 1, GL_FALSE, V->topMatrix().data());
 
       glUniform3f(progPh->getUniform("MatAmb"), 0.3294, 0.2235, 0.02745);
       glUniform3f(progPh->getUniform("MatDif"), 0.7804, 0.5686, 0.11373);
@@ -369,18 +456,26 @@ static void render() {
       glUniform1f(progPh->getUniform("NColor"), 0);
       glUniform3fv(progPh->getUniform("lightPos"), 1, lightPos);
       glUniform3fv(progPh->getUniform("lightColor"), 1, lightColor);
-      sphere->draw(progPh);
+      //sphere->draw(progPh);
       M->popMatrix();
 
-      //std::cout << "samples " << samples << std::endl;
-      if (i == 0) {
+      if (i == 0 && scale > scaleTo.first + .0001) {
          size_t samples = sampleNum - lastSample.at(i);
+         //std::cout << "samples " << samples << std::endl;
 
-         Aquila::AquilaFft coldTurkey(64);
+         Aquila::AquilaFft coldTurkey(256);
          Aquila::SpectrumType spectrum = coldTurkey.fft(src.toArray());
-         drawGraph(spectrum, P, M, V);
 
-         //std::cout << "fft Vector (" << aquilaSpectrum.size() << ") ";
+         double len = spectrum.size();
+         std::vector<double> absSpectrum(len/4);
+         for (size_t i = 0; i < len/4; i++) {
+            absSpectrum[i] =
+               (std::abs(spectrum[i*2]) + std::abs(spectrum[(i+1)*2])
+                + std::abs(spectrum[(i+2)*2]) + std::abs(spectrum[(i+3)*2])) / 4;
+         }
+         //std::cout << "fft Vector (" << spectrum.size() << ") " << std::endl;
+         drawGraph(absSpectrum, absSpectrum.begin(), absSpectrum.end(), P, M, V);
+
          //for (Aquila::ComplexType type : aquilaSpectrum) {
          //   std::cout << type.real() << " ";
          //}
@@ -392,10 +487,10 @@ static void render() {
          //std::cout << "interval " << interval.at(i) << " scale " << scale << std::endl;
       }
 
-      progPh->unbind();
       lastSample.at(i) = sampleNum;
       i++;
    }
+   progPh->unbind();
    P->popMatrix();
    V->popMatrix();
    ///diff = scale_temp - scale;
@@ -544,13 +639,14 @@ int main(int argc, char *argv[]) {
 
       interval.push_back((double)wav.getSamplesCount() / (double)wav.getAudioLength());
 
-      for (std::size_t i = 0; i < wav.getSamplesCount(); ++i) {
-         std::vector<Aquila::SampleType> v = {wav.sample(i)};
+      for (size_t j = 0; j < wav.getSamplesCount(); ++j) {
+         std::vector<Aquila::SampleType> v = {wav.sample(j)};
          Aquila::SignalSource src(v, wav.getSampleFrequency());
          if (Aquila::power(src) > maxValue)
             maxValue = Aquila::power(src);
          if (Aquila::power(src) < minValue)
             minValue = Aquila::power(src);
+
       }
       ranges.push_back(std::pair<double,double>(minValue, maxValue));
       i++;
@@ -604,9 +700,9 @@ int main(int argc, char *argv[]) {
       sounds.push_back(std::thread(PlayMusic, wav));
    }
    //make these two events happen as close as possible
+   play = true;
    lastTime.push_back(duration_cast<milliseconds>(system_clock::now().time_since_epoch()));
    lastSample.push_back(0);
-   play = true;
    for (size_t i = 1; i < wavs.size(); i++) {
       lastTime.push_back(lastTime.at(0));
       lastSample.push_back(lastSample.at(0));
