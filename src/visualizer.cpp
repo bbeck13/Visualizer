@@ -43,13 +43,15 @@ shared_ptr<Program> progPh;
 shared_ptr<Shape> sphere;
 shared_ptr<Shape> cube;
 bool play = false;
-bool showParticles[4] = {false, false, false};
 float lightPos[3] = {-0.5f, 0.0f, 1.0f};
 float lightColor[3] = {1.0f, 1.0f, 1.0f};
+float particleThreshold = 0.7f;
+bool drawParts = false;
+
 Eigen::Vector3f eyePos(0,0,0);
 Eigen::Vector3f lookAtPos(0,0,-5);
 Eigen::Vector3f up(0, 1 ,0);
-std::pair<double,double> scaleTo(.5, 1.5);
+std::pair<double,double> scaleTo(.5, 2);
 
 //information for a each audio file
 std::vector<Aquila::WaveFile> wavs;
@@ -59,12 +61,16 @@ std::pair<double, double> fftRange;
 std::vector<milliseconds> lastTime;
 std::vector<double> interval;
 std::vector<int> lastSample;
+std::vector<Eigen::Vector3f> particleColor;
 
 int g_width, g_height;
 float camRot;
 double pathTime;
 double speed = .01;
-Eigen::Vector3f bounds(2, 6 ,15);
+double avgSpeed = .01;
+std::pair<double,double> speeds(0, .2);
+std::pair<double,double> pointSize(30.0f, 50.0f);
+Eigen::Vector3f bounds(2, 2 ,10);
 
 //Aquila::SampleType maxValue = 0, minValue = 0, average = 0, aboveLimit = 0;
 vector<shared_ptr<Particle>> particles;
@@ -184,14 +190,14 @@ static void init() {
    progPh->addAttribute("vertTex");
 
 
-   //set up the paths for the balls
+   //set up the paths and colors for the balls
    for (size_t i = 0; i < wavs.size(); i++) {
+      particleColor.push_back(Eigen::Vector3f(randfloat(0, 1), randfloat(0, 1), randfloat(0, 1)));
       paths.push_back(Eigen::Vector3f(
-               randfloat(-speed, speed),
-               randfloat(-speed, speed),
-               randfloat(-speed, speed)));
+               std::rand()%2 ? -speed : speed,
+               std::rand()%2 ? -speed : speed,
+               std::rand()%2 ? -speed : speed));
    }
-
 
    //////////////////////////////////////////////////////
    // Initialize the particles
@@ -230,7 +236,6 @@ void initGeom() {
 
 }
 
-//Note you could add scale later for each particle - not implemented
 void updateGeom() {
    Eigen::Vector3f pos;
    Eigen::Vector4f col;
@@ -281,8 +286,18 @@ ParticleSorter sorter;
 void updateParticles() {
 
    //update the particles
+   h = speed;
+   Eigen::Vector3f clr(0, 0, 0);
+   for (size_t i = 0; i < wavs.size(); i++) {
+      clr.x() += particleColor.at(i).x();
+      clr.y() += particleColor.at(i).y();
+      clr.z() += particleColor.at(i).z();
+   }
+   clr.x() /= wavs.size();
+   clr.y() /= wavs.size();
+   clr.z() /= wavs.size();
    for(auto particle : particles) {
-      particle->update(t, h, g, keyToggles);
+      particle->update(t, h, g, keyToggles, clr, avgSpeed);
    }
    t += h;
 
@@ -331,19 +346,19 @@ void drawGraph(std::vector<double> spectrum, Iterator begin, Iterator end,
    }
    //begin += 2;
    //for (size_t xPos = 0; xPos < size; xPos++) {
-      //matrix2[xPos].resize(m_width, false);
-      //double normalVal = (*begin++ - min + 1) / range;
-      //std::size_t yPos = m_height
-         //- static_cast<size_t>(std::ceil(m_height * normalVal));
+   //matrix2[xPos].resize(m_width, false);
+   //double normalVal = (*begin++ - min + 1) / range;
+   //std::size_t yPos = m_height
+   //- static_cast<size_t>(std::ceil(m_height * normalVal));
 
-      //if (yPos >= m_height) {
-         //yPos = m_height -1;
-      //}
-      //if (matrix[xPos][yPos] == true && yPos < 3) {
-         //std::cout << yPos << std::endl;
-         //matrix[xPos][yPos] = false;
-      //}
-      //matrix2[xPos][yPos] = true;
+   //if (yPos >= m_height) {
+   //yPos = m_height -1;
+   //}
+   //if (matrix[xPos][yPos] == true && yPos < 3) {
+   //std::cout << yPos << std::endl;
+   //matrix[xPos][yPos] = false;
+   //}
+   //matrix2[xPos][yPos] = true;
    //}
    //std::cout << "len = " << matrix.size() << std::endl;
    size_t yPos = 0, xPos = 0;
@@ -392,9 +407,11 @@ static void render() {
    double scale;
    static double x[4] = {randfloat(-2.0f, 2.0f), randfloat(-2.0f, 2.0f), randfloat(-2.0f, 2.0f),randfloat(-2.0f, 2.0f)},
                  y[4] = {randfloat(-2.0f, 2.0f), randfloat(-2.0f, 2.0f), randfloat(-2.0f, 2.0f),randfloat(-2.0f, 2.0f)},
-                 z[4] = {-5, -5, -5};
+                 z[4] = {-5, -5, -5, -5};
 
    float aspect = g_width/(float)g_height;
+   double avgpower = 0, power;
+   avgSpeed = 0;
    auto P = make_shared<MatrixStack>();
    auto MV = make_shared<MatrixStack>();
 
@@ -429,16 +446,18 @@ static void render() {
          v.push_back(wavs.at(i).sample(j));
       }
       Aquila::SignalSource src(v, wavs.at(i).getSampleFrequency());
-      scale = mapRange(ranges.at(i), scaleTo, Aquila::power(src));
+      power = Aquila::power(src);
+      avgpower += power;
+      scale = mapRange(ranges.at(i), scaleTo, power);
       //draw!!
       M->pushMatrix();
       M->loadIdentity();
       M->translate(Vector3f(x[i], y[i], z[i]));
       M->scale(Vector3f(scale, scale, scale));
 
-      glUniform3f(progPh->getUniform("MatAmb"), 0.3294, 0.2235, 0.02745);
-      glUniform3f(progPh->getUniform("MatDif"), 0.7804, 0.5686, 0.11373);
-      glUniform3f(progPh->getUniform("specular"), 0.9922, 0.941176, 0.80784);
+      glUniform3f(progPh->getUniform("MatAmb"), particleColor.at(i).x(), particleColor.at(i).y(), particleColor.at(i).z());
+      glUniform3f(progPh->getUniform("MatDif"), particleColor.at(i).x(), particleColor.at(i).y(), particleColor.at(i).z());
+      glUniform3f(progPh->getUniform("specular"), particleColor.at(i).x()-.2, particleColor.at(i).y()+.3, particleColor.at(i).z()+.4);
       glUniform1f(progPh->getUniform("shine"), 27.9);
       glUniformMatrix4fv(progPh->getUniform("ModelMatrix"), 1, GL_FALSE, M->topMatrix().data());
       glUniform1f(progPh->getUniform("NColor"), 0);
@@ -448,8 +467,6 @@ static void render() {
       M->popMatrix();
 
       if (scale > scaleTo.first + .0001) {
-         size_t samples = sampleNum - lastSample.at(i);
-         //std::cout << "samples " << samples << std::endl;
 
          Aquila::AquilaFft coldTurkey(256);
          Aquila::SpectrumType spectrum = coldTurkey.fft(src.toArray());
@@ -483,137 +500,103 @@ static void render() {
                break;
          }
 
-         //for (Aquila::ComplexType type : aquilaSpectrum) {
-         //   std::cout << type.real() << " ";
-         //}
-         //std::cout << std::endl;
-         //Aquila::TextPlot plot("Input signal");
-         //plot.setTitle("Spectrum");
-         //plot.plotSpectrum(aquilaSpectrum);
-
       }
+      bool changed = false;
       progPh->unbind();
-      //std::cout << "i " << i << " scale " << paths.at(0) << std::endl;
-      if (scale > scaleTo.second - .5 || showParticles[i]) {
-         std::cout << "i " << i << " scale " << paths.at(0) << std::endl;
-         if (!showParticles[i]) {
-            showParticles[i] = true;
-         }
-         //particles!
-         updateParticles();
-         updateGeom();
-         // Apply perspective projection.
-         MV->loadIdentity();
-         //camera rotate
-         MV->rotate(camRot, Vector3f(0, 1, 0));
-         MV->translate(Vector3f(x[i], y[i], z[i] - 1));
-
-         // Draw
-         progP->bind();
-         glUniformMatrix4fv(progP->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
-
-         glUniformMatrix4fv(progP->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
-
-         glEnableVertexAttribArray(0);
-         glBindBuffer(GL_ARRAY_BUFFER, pointsbuffer);
-         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0,(void*)0);
-
-         glEnableVertexAttribArray(1);
-         glBindBuffer(GL_ARRAY_BUFFER, colorbuffer);
-         glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 0,(void*)0);
-
-         glVertexAttribDivisor(0, 1);
-         glVertexAttribDivisor(1, 1);
-         // Draw the points !
-         //std::cout << "sample num " << sampleNum << " Num samples " << wav.getSamplesCount() << std::endl;
-         glDrawArraysInstanced(GL_POINTS, 0, 1, numP);
-         //std::cout << "sample num " << sampleNum << " Num samples " << wav.getSamplesCount() << std::endl;
-
-         glVertexAttribDivisor(0, 0);
-         glVertexAttribDivisor(1, 0);
-         glDisableVertexAttribArray(0);
-         glDisableVertexAttribArray(1);
-         progP->unbind();
-      }
-      //x[i] = x[i] + paths.at(i).x() >= bounds.x() ?
-         //x[i] + randfloat(-.1, 0)
-         //:
-         //(x[i] + paths.at(i).x() <= -bounds.x() ? x[i] randfloat(0, .1) : x[i] + paths.at(i).x());
+      speed = mapRange(ranges.at(i), speeds, power);
+      avgSpeed += speed;
 
       if (x[i] + paths.at(i).x() >= bounds.x()) {
-         paths.at(i).x() = randfloat(-speed, 0);
+         changed = true;
+         paths.at(i).x() = -speed;
       } else if (x[i] + paths.at(i).x() <= -bounds.x()){
-         paths.at(i).x() = randfloat(0, speed);
+         changed = true;
+         paths.at(i).x() = speed;
+      } else if (std::abs(paths.at(i).x()) != speed) {
+         paths.at(i).x() = paths.at(i).x() < 0 ? -speed : speed;
       }
       x[i] += paths.at(i).x();
+
+      if (y[i] + paths.at(i).y() >= bounds.y()) {
+         changed = true;
+         paths.at(i).y() = -speed;
+      } else if (y[i] + paths.at(i).y() <= -bounds.y()){
+         changed = true;
+         paths.at(i).y() = speed;
+      } else if (std::abs(paths.at(i).y()) != speed) {
+         paths.at(i).y() = paths.at(i).y() < 0 ? -speed : speed;
+      }
+
+      y[i] += paths.at(i).y();
+
+      if (z[i] + paths.at(i).z() >= -5) {
+         changed = true;
+         paths.at(i).z() = -speed;
+      } else if (z[i] + paths.at(i).z() <= -bounds.z()){
+         changed = true;
+         paths.at(i).z() = speed;
+      } else if (std::abs(paths.at(i).z()) != speed) {
+         paths.at(i).z() = paths.at(i).z() < 0 ? -speed : speed;
+      }
+      z[i] += paths.at(i).z();
+
+      if (changed) {
+         particleColor.at(i).x() = randfloat(0, 1);
+         particleColor.at(i).y() = randfloat(0, 1);
+         particleColor.at(i).z() = randfloat(0, 1);
+      }
 
       lastSample.at(i) = sampleNum;
       i++;
    }
+   avgSpeed /= i;
+   avgpower /= i;
    // Pop matrix stacks.
    P->popMatrix();
    V->popMatrix();
-   ///diff = scale_temp - scale;
 
-   //if (diff > .3 || diff < -.3) {
-   //   scale = scale_temp - (scale_temp *.2);
-   //} else {
-   //   scale = scale_temp;
-   //}
+   // Apply perspective projection.
+   P->pushMatrix();
+   P->perspective(45.0f, aspect, 0.01f, 100.0f);
+   MV->loadIdentity();
+   //camera rotate
+   MV->rotate(camRot, Vector3f(0, 1, 0));
+   MV->translate(Vector3f(0, 0, -10));
 
-   //std::cout << "scale? " << scale << std::endl;
-   //std::cout << " wave " << wav.getFilename() << std::endl;
+   // Draw
+   progP->bind();
+   std::pair<double,double> oneZero(-.2f, .5f);
+   //cpp typechecking is awful don't try to be something you're not !!
+   double pos = mapRange(*std::max_element(ranges.begin(), ranges.end()), oneZero, avgpower);
+   lightPos[0]= pos;
 
-   //Cukk
-   //std::cout << "sampleNum " << sampleNum << " value " << (wav.sample(sampleNum)).getSampleFrequency() << std::endl;
-   //std::cout << "max " << maxValue << " min " << minValue << " cur " << wav.sample(sampleNum) << std::endl;
+   glPointSize(mapRange(*std::max_element(ranges.begin(), ranges.end()), pointSize, avgpower));
+   updateParticles();
+   updateGeom();
+   glUniformMatrix4fv(progP->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
 
+   glUniformMatrix4fv(progP->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
 
+   glEnableVertexAttribArray(0);
+   glBindBuffer(GL_ARRAY_BUFFER, pointsbuffer);
+   glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0,(void*)0);
 
-   //Draw mesh using GLSL.
-   //MV->pushMatrix();
-   //MV->loadIdentity();
-   //MV->translate(Vector3f(-2, 2, -10));
-   //MV->scale(Vector3f(scale, scale, scale));
-   //prog->bind();
-   //glUniformMatrix4fv(prog->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
-   //glUniformMatrix4fv(prog->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
-   //sphere->draw(prog);
-   //prog->unbind();
+   glEnableVertexAttribArray(1);
+   glBindBuffer(GL_ARRAY_BUFFER, colorbuffer);
+   glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 0,(void*)0);
 
-   //scale = mapRange(from, to, Aquila::energy(src));
-   //MV->pushMatrix();
-   //MV->loadIdentity();
-   //MV->translate(Vector3f(2, 2, -10));
-   //MV->scale(Vector3f(scale, scale, scale));
-   //prog->bind();
-   //glUniformMatrix4fv(prog->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
-   //glUniformMatrix4fv(prog->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
-   //sphere->draw(prog);
-   //prog->unbind();
+   glVertexAttribDivisor(0, 1);
+   glVertexAttribDivisor(1, 1);
+   // Draw the points !
+   glDrawArraysInstanced(GL_POINTS, 0, 1, numP);
 
-   //scale = mapRange(from, to, Aquila::power(src));
-   ////std::cout << "scale " << scale << std::endl;
-   //MV->pushMatrix();
-   //MV->loadIdentity();
-   //MV->translate(Vector3f(-2, -2, -10));
-   //MV->scale(Vector3f(scale, scale, scale));
-   //prog->bind();
-   //glUniformMatrix4fv(prog->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
-   //glUniformMatrix4fv(prog->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
-   //sphere->draw(prog);
-   //prog->unbind();
-
-   //scale = mapRange(from, to, Aquila::energy(src));
-   //MV->pushMatrix();
-   //MV->loadIdentity();
-   //MV->translate(Vector3f(2, -2, -10));
-   //MV->scale(Vector3f(scale, scale, scale));
-   //prog->bind();
-   //glUniformMatrix4fv(prog->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
-   //glUniformMatrix4fv(prog->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
-   //sphere->draw(prog);
-   //prog->unbind();
+   glVertexAttribDivisor(0, 0);
+   glVertexAttribDivisor(1, 0);
+   glDisableVertexAttribArray(0);
+   glDisableVertexAttribArray(1);
+   progP->unbind();
+   // Pop matrix stacks.
+   P->popMatrix();
 
 
 

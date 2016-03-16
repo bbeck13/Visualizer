@@ -25,8 +25,8 @@ public:
 	Particle();
 	virtual ~Particle();
 	void load();
-	void rebirth(float t);
-	void update(float t, float h, const Eigen::Vector3f &g, const bool *keyToggles);
+	void rebirth(float t, Eigen::Vector3f color, float speed);
+	void update(float t, float h, const Eigen::Vector3f &g, const bool *keyToggles, Eigen::Vector3f color, float speed);
 	const Eigen::Vector3f &getPosition() const { return x; };
 	const Eigen::Vector3f &getVelocity() const { return v; };
 	const Eigen::Vector4f &getColor() const { return color; };
