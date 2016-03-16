@@ -51,10 +51,10 @@ void Particle::rebirth(float t)
    x(0) = 0;
    x(1) = .48;
    x(2) = -2;
-   v(0) = randFloat(-0.1f, 0.1f);
-   v(1) = randFloat(0.1f, 0.3f);
-   v(2) = randFloat(-0.1f, 0.1f);
-   lifespan = randFloat(2.0f, 4.0f);
+   v(0) = randFloat(-0.3f, 0.3f);
+   v(1) = randFloat(-0.3f, 0.3f);
+   v(2) = randFloat(-0.3f, 0.3f);
+   lifespan = randFloat(3.0f, 6.0f);
    tEnd = t + lifespan;
    scale = randFloat(0.2, 1.0f);
    color(0) = randFloat(0.2929f, 0.35f);
@@ -71,6 +71,6 @@ void Particle::update(float t, float h, const Eigen::Vector3f &g, const bool *ke
 
    //very simple update
    x += h*v;
-   v(1) = v(1) - .003;
+   //v(1) = v(1) - .003;
    color(3) = (tEnd-t)/lifespan;
 }

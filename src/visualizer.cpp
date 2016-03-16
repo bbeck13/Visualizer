@@ -43,6 +43,7 @@ shared_ptr<Program> progPh;
 shared_ptr<Shape> sphere;
 shared_ptr<Shape> cube;
 bool play = false;
+bool showParticles[4] = {false, false, false};
 float lightPos[3] = {-0.5f, 0.0f, 1.0f};
 float lightColor[3] = {1.0f, 1.0f, 1.0f};
 Eigen::Vector3f eyePos(0,0,0);
@@ -52,6 +53,7 @@ std::pair<double,double> scaleTo(.5, 1.5);
 
 //information for a each audio file
 std::vector<Aquila::WaveFile> wavs;
+std::vector<Eigen::Vector3f> paths;
 std::vector<std::pair<double,double>> ranges;
 std::pair<double, double> fftRange;
 std::vector<milliseconds> lastTime;
@@ -60,6 +62,9 @@ std::vector<int> lastSample;
 
 int g_width, g_height;
 float camRot;
+double pathTime;
+double speed = .01;
+Eigen::Vector3f bounds(2, 6 ,15);
 
 //Aquila::SampleType maxValue = 0, minValue = 0, average = 0, aboveLimit = 0;
 vector<shared_ptr<Particle>> particles;
@@ -89,8 +94,7 @@ static void error_callback(int error, const char *description) {
    cerr << description << endl;
 }
 
-static void key_callback(GLFWwindow *window, int key, int scancode, int action, int mods)
-{
+static void key_callback(GLFWwindow *window, int key, int scancode, int action, int mods) {
    if(key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
       glfwSetWindowShouldClose(window, GL_TRUE);
    }
@@ -178,6 +182,16 @@ static void init() {
    progPh->addAttribute("vertPos");
    progPh->addAttribute("vertNor");
    progPh->addAttribute("vertTex");
+
+
+   //set up the paths for the balls
+   for (size_t i = 0; i < wavs.size(); i++) {
+      paths.push_back(Eigen::Vector3f(
+               randfloat(-speed, speed),
+               randfloat(-speed, speed),
+               randfloat(-speed, speed)));
+   }
+
 
    //////////////////////////////////////////////////////
    // Initialize the particles
@@ -294,7 +308,8 @@ tVal mapRange(std::pair<tVal,tVal> a, std::pair<tVal, tVal> b, tVal inVal) {
 
 template <typename Iterator>
 void drawGraph(std::vector<double> spectrum, Iterator begin, Iterator end,
-      std::shared_ptr<MatrixStack> P, std::shared_ptr<MatrixStack> M, std::shared_ptr<MatrixStack> V) {
+      std::shared_ptr<MatrixStack> P, std::shared_ptr<MatrixStack> M, std::shared_ptr<MatrixStack> V,
+      int baseY, int baseX) {
    const double max = *std::max_element(begin, end);
    const double min = *std::min_element(begin, end);
    const double range = max - min;
@@ -314,25 +329,26 @@ void drawGraph(std::vector<double> spectrum, Iterator begin, Iterator end,
       }
       matrix[xPos][yPos] = true;
    }
-   begin += 2;
-   for (size_t xPos = 0; xPos < size; xPos++) {
-      matrix2[xPos].resize(m_width, false);
-      double normalVal = (*begin++ - min + 1) / range;
-      std::size_t yPos = m_height
-         - static_cast<size_t>(std::ceil(m_height * normalVal));
+   //begin += 2;
+   //for (size_t xPos = 0; xPos < size; xPos++) {
+      //matrix2[xPos].resize(m_width, false);
+      //double normalVal = (*begin++ - min + 1) / range;
+      //std::size_t yPos = m_height
+         //- static_cast<size_t>(std::ceil(m_height * normalVal));
 
-      if (yPos >= m_height) {
-         yPos = m_height -1;
-      }
-      if (matrix[xPos][yPos] == true) {
-         matrix[xPos][yPos] = false;
-      }
-      matrix2[xPos][yPos] = true;
-   }
+      //if (yPos >= m_height) {
+         //yPos = m_height -1;
+      //}
+      //if (matrix[xPos][yPos] == true && yPos < 3) {
+         //std::cout << yPos << std::endl;
+         //matrix[xPos][yPos] = false;
+      //}
+      //matrix2[xPos][yPos] = true;
+   //}
    //std::cout << "len = " << matrix.size() << std::endl;
    size_t yPos = 0, xPos = 0;
-   for (float y = -4; y < 0; y += 0.25f) {
-      for (float x = -4; x < 4; x += 0.25f) {
+   for (float y = baseY; y < (baseY + 4); y += 0.25f) {
+      for (float x = baseX; x < (baseX + 8); x += 0.25f) {
          if (matrix[xPos][yPos] == true) {
             M->pushMatrix();
             M->loadIdentity();
@@ -340,9 +356,9 @@ void drawGraph(std::vector<double> spectrum, Iterator begin, Iterator end,
             M->scale(Vector3f(.1, .1, .00000001));
             float r, g, b;
             b = 0;
-            g = mapRange(std::pair<float, float>(-4, 0), std::pair<float, float>(0 , 1), y);
+            g = mapRange(std::pair<float, float>(baseY, baseY + 4), std::pair<float, float>(0 , 1), y);
             r = 1 - g;
-            std::cout << "r " << r <<" g " << g << " b" << b <<std::endl;
+            //std::cout << "r " << r <<" g " << g << " b" << b <<std::endl;
             glUniform3f(progPh->getUniform("MatAmb"), r, g, b);
             glUniform3f(progPh->getUniform("MatDif"), r, g, b);
             glUniform3f(progPh->getUniform("specular"), r, g ,b);
@@ -362,35 +378,6 @@ void drawGraph(std::vector<double> spectrum, Iterator begin, Iterator end,
       yPos++;
       xPos = 0;
    }
-   /*yPos = 0;
-   for (float y = -3; y < 0.75; y += 0.25f) {
-      for (float x = -2.75; x < 5.25; x += 0.25f) {
-         if (matrix2[xPos][yPos] == true) {
-            M->pushMatrix();
-            M->loadIdentity();
-            M->translate(Vector3f(-x, y, -15));
-            M->scale(Vector3f(.1, .1, .00000001));
-            glUniform3f(progPh->getUniform("MatAmb"), 1, 1, 1);
-            glUniform3f(progPh->getUniform("MatDif"), 1, 1, 1);
-            glUniform3f(progPh->getUniform("specular"), 0.9922, 0.941176, 0.80784);
-            glUniform1f(progPh->getUniform("shine"), 27.9);
-            glUniformMatrix4fv(progPh->getUniform("ModelMatrix"), 1, GL_FALSE, M->topMatrix().data());
-            glUniform1f(progPh->getUniform("NColor"), 0);
-            glUniform3fv(progPh->getUniform("lightPos"), 1, lightPos);
-            glUniform3fv(progPh->getUniform("lightColor"), 1, lightColor);
-            cube->draw(progPh);
-            for (size_t tempY = yPos; tempY < m_height; tempY++) {
-               matrix2[xPos][tempY] = true;
-            }
-            M->popMatrix();
-         }
-         xPos++;
-      }
-      yPos++;
-      xPos = 0;
-   }*/
-   //Aquila::TextPlot plot("Input signal");
-   //plot.plot(absSpectrum);
 }
 
 static void render() {
@@ -404,7 +391,8 @@ static void render() {
    //std::pair<double,double> from(0, maxValue), to(1, 2.5);
    double scale;
    static double x[4] = {randfloat(-2.0f, 2.0f), randfloat(-2.0f, 2.0f), randfloat(-2.0f, 2.0f),randfloat(-2.0f, 2.0f)},
-                 y[4] = {randfloat(-2.0f, 2.0f), randfloat(-2.0f, 2.0f), randfloat(-2.0f, 2.0f),randfloat(-2.0f, 2.0f)};
+                 y[4] = {randfloat(-2.0f, 2.0f), randfloat(-2.0f, 2.0f), randfloat(-2.0f, 2.0f),randfloat(-2.0f, 2.0f)},
+                 z[4] = {-5, -5, -5};
 
    float aspect = g_width/(float)g_height;
    auto P = make_shared<MatrixStack>();
@@ -419,10 +407,10 @@ static void render() {
    V->lookAt(eyePos, lookAtPos, up);
    size_t i = 0, done = 0;
 
-   progPh->bind();
-   glUniformMatrix4fv(progPh->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
-   glUniformMatrix4fv(progPh->getUniform("ViewMatrix"), 1, GL_FALSE, V->topMatrix().data());
    while (i < wavs.size()) {
+      progPh->bind();
+      glUniformMatrix4fv(progPh->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
+      glUniformMatrix4fv(progPh->getUniform("ViewMatrix"), 1, GL_FALSE, V->topMatrix().data());
       milliseconds ms = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
       diffTime = ms.count() - lastTime.at(i).count();
       sampleNum = diffTime*interval.at(i);
@@ -445,7 +433,7 @@ static void render() {
       //draw!!
       M->pushMatrix();
       M->loadIdentity();
-      M->translate(Vector3f(x[i], y[i], -5));
+      M->translate(Vector3f(x[i], y[i], z[i]));
       M->scale(Vector3f(scale, scale, scale));
 
       glUniform3f(progPh->getUniform("MatAmb"), 0.3294, 0.2235, 0.02745);
@@ -456,10 +444,10 @@ static void render() {
       glUniform1f(progPh->getUniform("NColor"), 0);
       glUniform3fv(progPh->getUniform("lightPos"), 1, lightPos);
       glUniform3fv(progPh->getUniform("lightColor"), 1, lightColor);
-      //sphere->draw(progPh);
+      sphere->draw(progPh);
       M->popMatrix();
 
-      if (i == 0 && scale > scaleTo.first + .0001) {
+      if (scale > scaleTo.first + .0001) {
          size_t samples = sampleNum - lastSample.at(i);
          //std::cout << "samples " << samples << std::endl;
 
@@ -468,13 +456,32 @@ static void render() {
 
          double len = spectrum.size();
          std::vector<double> absSpectrum(len/4);
-         for (size_t i = 0; i < len/4; i++) {
-            absSpectrum[i] =
-               (std::abs(spectrum[i*2]) + std::abs(spectrum[(i+1)*2])
-                + std::abs(spectrum[(i+2)*2]) + std::abs(spectrum[(i+3)*2])) / 4;
+         for (size_t j = 0; j < len/4; j++) {
+            absSpectrum[j] =
+               (std::abs(spectrum[j*2]) + std::abs(spectrum[(j+1)*2])
+                + std::abs(spectrum[(j+2)*2]) + std::abs(spectrum[(j+3)*2])) / 4;
          }
          //std::cout << "fft Vector (" << spectrum.size() << ") " << std::endl;
-         drawGraph(absSpectrum, absSpectrum.begin(), absSpectrum.end(), P, M, V);
+         switch(i) {
+            case 0:
+               if (wavs.size() == 1)
+                  drawGraph(absSpectrum, absSpectrum.begin(), absSpectrum.end(), P, M, V, -4, -4);
+               else
+                  drawGraph(absSpectrum, absSpectrum.begin(), absSpectrum.end(), P, M, V, -6, -8);
+               break;
+            case 1:
+               drawGraph(absSpectrum, absSpectrum.begin(), absSpectrum.end(), P, M, V, -6, 2);
+               break;
+            case 2:
+               drawGraph(absSpectrum, absSpectrum.begin(), absSpectrum.end(), P, M, V, 0, -8);
+               break;
+            case 3:
+               drawGraph(absSpectrum, absSpectrum.begin(), absSpectrum.end(), P, M, V, 0, 2);
+               break;
+            default:
+               drawGraph(absSpectrum, absSpectrum.begin(), absSpectrum.end(), P, M, V, -4, -4);
+               break;
+         }
 
          //for (Aquila::ComplexType type : aquilaSpectrum) {
          //   std::cout << type.real() << " ";
@@ -484,13 +491,66 @@ static void render() {
          //plot.setTitle("Spectrum");
          //plot.plotSpectrum(aquilaSpectrum);
 
-         //std::cout << "interval " << interval.at(i) << " scale " << scale << std::endl;
       }
+      progPh->unbind();
+      //std::cout << "i " << i << " scale " << paths.at(0) << std::endl;
+      if (scale > scaleTo.second - .5 || showParticles[i]) {
+         std::cout << "i " << i << " scale " << paths.at(0) << std::endl;
+         if (!showParticles[i]) {
+            showParticles[i] = true;
+         }
+         //particles!
+         updateParticles();
+         updateGeom();
+         // Apply perspective projection.
+         MV->loadIdentity();
+         //camera rotate
+         MV->rotate(camRot, Vector3f(0, 1, 0));
+         MV->translate(Vector3f(x[i], y[i], z[i] - 1));
+
+         // Draw
+         progP->bind();
+         glUniformMatrix4fv(progP->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
+
+         glUniformMatrix4fv(progP->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
+
+         glEnableVertexAttribArray(0);
+         glBindBuffer(GL_ARRAY_BUFFER, pointsbuffer);
+         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0,(void*)0);
+
+         glEnableVertexAttribArray(1);
+         glBindBuffer(GL_ARRAY_BUFFER, colorbuffer);
+         glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 0,(void*)0);
+
+         glVertexAttribDivisor(0, 1);
+         glVertexAttribDivisor(1, 1);
+         // Draw the points !
+         //std::cout << "sample num " << sampleNum << " Num samples " << wav.getSamplesCount() << std::endl;
+         glDrawArraysInstanced(GL_POINTS, 0, 1, numP);
+         //std::cout << "sample num " << sampleNum << " Num samples " << wav.getSamplesCount() << std::endl;
+
+         glVertexAttribDivisor(0, 0);
+         glVertexAttribDivisor(1, 0);
+         glDisableVertexAttribArray(0);
+         glDisableVertexAttribArray(1);
+         progP->unbind();
+      }
+      //x[i] = x[i] + paths.at(i).x() >= bounds.x() ?
+         //x[i] + randfloat(-.1, 0)
+         //:
+         //(x[i] + paths.at(i).x() <= -bounds.x() ? x[i] randfloat(0, .1) : x[i] + paths.at(i).x());
+
+      if (x[i] + paths.at(i).x() >= bounds.x()) {
+         paths.at(i).x() = randfloat(-speed, 0);
+      } else if (x[i] + paths.at(i).x() <= -bounds.x()){
+         paths.at(i).x() = randfloat(0, speed);
+      }
+      x[i] += paths.at(i).x();
 
       lastSample.at(i) = sampleNum;
       i++;
    }
-   progPh->unbind();
+   // Pop matrix stacks.
    P->popMatrix();
    V->popMatrix();
    ///diff = scale_temp - scale;
@@ -556,44 +616,6 @@ static void render() {
    //prog->unbind();
 
 
-   //particles!
-   updateParticles();
-   updateGeom();
-   // Apply perspective projection.
-   P->pushMatrix();
-   P->perspective(45.0f, aspect, 0.01f, 100.0f);
-   MV->loadIdentity();
-   //camera rotate
-   MV->rotate(camRot, Vector3f(0, 1, 0));
-
-   // Draw
-   progP->bind();
-   glUniformMatrix4fv(progP->getUniform("P"), 1, GL_FALSE, P->topMatrix().data());
-
-   glUniformMatrix4fv(progP->getUniform("MV"), 1, GL_FALSE, MV->topMatrix().data());
-
-   glEnableVertexAttribArray(0);
-   glBindBuffer(GL_ARRAY_BUFFER, pointsbuffer);
-   glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0,(void*)0);
-
-   glEnableVertexAttribArray(1);
-   glBindBuffer(GL_ARRAY_BUFFER, colorbuffer);
-   glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 0,(void*)0);
-
-   glVertexAttribDivisor(0, 1);
-   glVertexAttribDivisor(1, 1);
-   // Draw the points !
-   //std::cout << "sample num " << sampleNum << " Num samples " << wav.getSamplesCount() << std::endl;
-   glDrawArraysInstanced(GL_POINTS, 0, 1, numP);
-   //std::cout << "sample num " << sampleNum << " Num samples " << wav.getSamplesCount() << std::endl;
-
-   glVertexAttribDivisor(0, 0);
-   glVertexAttribDivisor(1, 0);
-   glDisableVertexAttribArray(0);
-   glDisableVertexAttribArray(1);
-   progP->unbind();
-   // Pop matrix stacks.
-   P->popMatrix();
 
 }
 
