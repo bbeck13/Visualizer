@@ -631,6 +631,10 @@ void PlayMusic(Aquila::WaveFile wav) {
 int main(int argc, char *argv[]) {
    g_width = 640;
    g_height = 480;
+   if (argc > 5) {
+      std::cout << "maximum 4 wav files allowed!!" << std::endl;
+      std::cout << "Usage: visualizer <FILENAME> ... <RESOURCEDIR>" << std::endl;
+   }
    if (argc < 3) {
       std::cout << "Usage: visualizer <FILENAME> ... <RESOURCEDIR>" << std::endl;
       if (argc < 2) {
