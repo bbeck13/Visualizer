@@ -69,8 +69,8 @@ double pathTime;
 double speed = .01;
 double avgSpeed = .01;
 std::pair<double,double> speeds(0, .2);
-std::pair<double,double> pointSize(30.0f, 50.0f);
-Eigen::Vector3f bounds(2, 2 ,10);
+std::pair<double,double> pointSize(30.0f, 150.0f);
+Eigen::Vector3f bounds(4, 3,10);
 
 //Aquila::SampleType maxValue = 0, minValue = 0, average = 0, aboveLimit = 0;
 vector<shared_ptr<Particle>> particles;
@@ -297,7 +297,7 @@ void updateParticles() {
    clr.y() /= wavs.size();
    clr.z() /= wavs.size();
    for(auto particle : particles) {
-      particle->update(t, h, g, keyToggles, clr, avgSpeed);
+      particle->update(t, h, g, keyToggles, clr, avgSpeed + (.1 *(avgSpeed - .01)));
    }
    t += h;
 
@@ -501,9 +501,21 @@ static void render() {
          }
 
       }
+
       bool changed = false;
       progPh->unbind();
       speed = mapRange(ranges.at(i), speeds, power);
+      if (speed <= 0.0001) {
+         particleColor.at(i).x() = 0;
+         particleColor.at(i).y() = 0;
+         particleColor.at(i).z() = 0;
+      } else if (particleColor.at(i).x() == 0
+            && particleColor.at(i).y() == 0
+            && particleColor.at(i).z() == 0) {
+         particleColor.at(i).x() = randfloat(0, 1);
+         particleColor.at(i).y() = randfloat(0, 1);
+         particleColor.at(i).z() = randfloat(0, 1);
+      }
       avgSpeed += speed;
 
       if (x[i] + paths.at(i).x() >= bounds.x()) {

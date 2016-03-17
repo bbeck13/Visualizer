@@ -54,7 +54,7 @@ void Particle::rebirth(float t, Eigen::Vector3f newColor, float speed) {
    v(0) = randFloat(-0.3f, 0.3f);
    v(1) = randFloat(-0.3f, 0.3f);
    v(2) = randFloat(-0.3f, 0.3f);
-   lifespan = randFloat(8.0f, 9.0f);
+   lifespan = randFloat(8.0f, 14.0f);
    tEnd = t + lifespan;
    scale = randFloat(0.2, 1.0f);
    color(0) = randFloat(newColor.x() -.1, newColor.x() + .1);
