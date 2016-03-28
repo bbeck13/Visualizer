@@ -69,7 +69,7 @@ double pathTime;
 double speed = .01;
 double avgSpeed = .01;
 std::pair<double,double> speeds(0, .2);
-std::pair<double,double> pointSize(30.0f, 150.0f);
+std::pair<double,double> pointSize(0.0f, 250.0f);
 Eigen::Vector3f bounds(4, 3,10);
 
 //Aquila::SampleType maxValue = 0, minValue = 0, average = 0, aboveLimit = 0;
