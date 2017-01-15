@@ -85,6 +85,7 @@ if(WIN32)
    # c++0x is enabled by default.
    # -Wall produces way too many warnings.
    # -pedantic is not supported.
+   # don't know what to do about all the libs I have :(
 else()
    # Enable all pedantic warnings.
    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x -Wall -pedantic")
@@ -96,5 +97,10 @@ else()
    else()
       #Link the Linux OpenGL library
       target_link_libraries(${CMAKE_PROJECT_NAME} "GL")
+      find_package(SFML 2 REQUIRED system window graphics network audio)
+      if(SFML_FOUND)
+        include_directories(${SFML_INCLUDE_DIR})
+        target_link_libraries(${CMAKE_PROJECT_NAME} ${SFML_LIBRARIES})
+      endif()
    endif()
 endif()
