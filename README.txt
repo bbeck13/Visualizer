@@ -59,9 +59,10 @@ Requirements:
       see:
       http://users.csc.calpoly.edu/~ssueda/teaching/CSC474/2016W/labs/L00/
       for installation information
-   aside from that you will need to have Libcanberra(for canberra-gtk-play), SFML and a lot of other
-   software that you will probably already have installed with the operating
-   system.
+   finally you will also need sfml
+      see:
+      http://www.sfml-dev.org/index.php
+
 
    Speaking of operating systems this software is only confirmed to work on
    linux based operating systems so if your running osx or windows now would
